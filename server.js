@@ -43,60 +43,69 @@ app.get('/view/:handle', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Retail OS Storefront</title>
+        <title>Storefront</title>
         <style>
             :root { --accent: #00d4ff; --bg: #0f0f0f; --card: #1a1a1a; --text: #ffffff; }
-            body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; line-height: 1.6; }
+            body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; line-height: 1.4; }
             
-            /* Banner & Header */
-            .banner-container { width: 100%; height: 180px; background: #222; overflow: hidden; position: relative; }
-            #store-banner { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; }
+            /* LARGE BANNER - Optimized for Mobile View */
+            .banner-container { width: 100%; height: 260px; background: #111; overflow: hidden; position: relative; }
+            #store-banner { width: 100%; height: 100%; object-fit: cover; }
+            .banner-overlay { position: absolute; top:0; left:0; width:100%; height:100%; background: linear-gradient(to bottom, transparent, var(--bg)); }
             
-            header { text-align: center; margin-top: -55px; position: relative; z-index: 10; padding-bottom: 10px; }
-            .logo { width: 110px; height: 110px; object-fit: cover; border-radius: 22%; border: 4px solid var(--bg); box-shadow: 0 10px 25px rgba(0,0,0,0.5); background: var(--card); }
+            header { text-align: center; margin-top: -80px; position: relative; z-index: 10; padding: 0 20px 20px 20px; }
+            .logo { width: 120px; height: 120px; object-fit: cover; border-radius: 25px; border: 5px solid var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: var(--card); }
             
-            /* Content Area */
-            #content { display: none; padding: 0 20px 20px 20px; max-width: 600px; margin: 0 auto; animation: fadeIn 0.5s ease; }
-            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            #content { display: none; max-width: 600px; margin: 0 auto; animation: fadeIn 0.6s ease; }
+            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-            .section-title { color: var(--accent); font-size: 1.2rem; margin: 35px 0 15px 0; border-left: 4px solid var(--accent); padding-left: 12px; text-transform: uppercase; letter-spacing: 1px; }
+            .section-title { color: var(--accent); font-size: 1.5rem; margin: 40px 20px 20px 20px; font-weight: 800; letter-spacing: -0.5px; }
             
-            .item-card { background: var(--card); padding: 12px; border-radius: 16px; margin-bottom: 15px; display: flex; align-items: center; border: 1px solid #252525; }
-            .item-img { width: 70px; height: 70px; border-radius: 10px; object-fit: cover; margin-right: 15px; background: #222; flex-shrink: 0; }
+            /* PRODUCT CARDS - Larger Images & Full Text */
+            .item-card { background: var(--card); margin: 0 15px 20px 15px; border-radius: 24px; overflow: hidden; border: 1px solid #252525; display: flex; flex-direction: column; }
+            .item-img-box { width: 100%; position: relative; }
+            .item-img { width: 100%; height: auto; max-height: 400px; object-fit: cover; display: block; }
             
-            .item-details { flex: 1; }
-            .item-name { font-weight: 700; font-size: 1rem; display: block; }
-            .item-desc { color: #888; font-size: 0.8rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-            .item-price { color: #00ff00; font-weight: 800; font-size: 1rem; padding-left: 10px; }
+            .item-body { padding: 20px; }
+            .item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+            .item-name { font-weight: 800; font-size: 1.3rem; flex: 1; padding-right: 10px; }
+            .item-price { color: #00ff00; font-weight: 900; font-size: 1.3rem; }
             
-            .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 18px; border-radius: 50px; display: flex; align-items: center; justify-content: center; margin: 40px 0; font-weight: bold; }
+            .item-desc { color: #bbb; font-size: 1rem; margin-bottom: 15px; white-space: pre-wrap; } /* Full description allowed */
+            
+            /* 5-STAR RATING SYSTEM */
+            .stars { color: #ffcc00; font-size: 0.9rem; margin-bottom: 5px; letter-spacing: 2px; }
+            
+            .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 20px; border-radius: 18px; display: flex; align-items: center; justify-content: center; margin: 40px 20px; font-weight: 800; font-size: 1.2rem; box-shadow: 0 10px 20px rgba(37, 211, 102, 0.2); }
+            
             .loader-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-            .loader { border: 3px solid #333; border-top: 3px solid var(--accent); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+            .loader { border: 4px solid #333; border-top: 4px solid var(--accent); border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; }
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         </style>
     </head>
     <body>
         <div id="loader-box" class="loader-wrap">
             <div class="loader"></div>
-            <p style="color: #666; margin-top: 20px;">SYNCING STOREFRONT...</p>
+            <p style="color: #888; margin-top: 25px; font-weight: bold; letter-spacing: 2px;">RETAIL OS SYNCING...</p>
         </div>
 
         <div id="full-store" style="display:none;">
             <div class="banner-container">
                 <img id="store-banner" src="" alt="">
+                <div class="banner-overlay"></div>
             </div>
 
             <div id="content">
                 <header>
                     <img id="store-logo" class="logo" src="" alt="">
-                    <h1 id="store-name" style="margin:10px 0 0 0; font-size: 1.8rem;"></h1>
-                    <p id="store-tagline" style="color: #888; margin: 5px 0;"></p>
+                    <h1 id="store-name" style="margin:15px 0 5px 0; font-size: 2.2rem; font-weight: 900;"></h1>
+                    <p id="store-tagline" style="color: #aaa; margin: 0; font-size: 1.1rem;"></p>
                 </header>
 
                 <div id="menu-container"></div>
 
-                <a id="wa-link" href="#" class="wa-btn">💬 Order via WhatsApp</a>
-                <footer style="text-align:center; padding: 20px; color: #444; font-size: 0.7rem;">Powered by Retail OS</footer>
+                <a id="wa-link" href="#" class="wa-btn">💬 ORDER VIA WHATSAPP</a>
+                <footer style="text-align:center; padding: 40px; color: #444; font-size: 0.8rem; font-weight: bold;">POWERED BY RETAIL OS v1.0</footer>
             </div>
         </div>
 
@@ -134,22 +143,25 @@ app.get('/view/:handle', (req, res) => {
                             const itemNode = document.createElement('div');
                             itemNode.className = 'item-card';
                             const imgUri = item.image || item.img || '';
-                            const imgHtml = imgUri ? \`<img src="\${imgUri}" class="item-img">\` : '';
+                            const imgHtml = imgUri ? \`<div class="item-img-box"><img src="\${imgUri}" class="item-img"></div>\` : '';
 
                             itemNode.innerHTML = \`
                                 \${imgHtml}
-                                <div class="item-details">
-                                    <span class="item-name">\${item.name}</span>
-                                    <span class="item-desc">\${item.desc || ''}</span>
+                                <div class="item-body">
+                                    <div class="stars">★★★★★</div>
+                                    <div class="item-header">
+                                        <span class="item-name">\${item.name}</span>
+                                        <span class="item-price">\${data.curr} \${item.price}</span>
+                                    </div>
+                                    <div class="item-desc">\${item.desc || ''}</div>
                                 </div>
-                                <span class="item-price">\${data.curr} \${item.price}</span>
                             \`;
                             secNode.appendChild(itemNode);
                         });
                         container.appendChild(secNode);
                     });
                 } catch (err) {
-                    document.body.innerHTML = "<h1>Error Connecting</h1>";
+                    document.body.innerHTML = "<h1>Connection Error</h1>";
                 }
             }
             bootStore();
