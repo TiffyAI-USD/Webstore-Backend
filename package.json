@@ -4,7 +4,8 @@
   "description": "Cloud Sync and Storage for TiffyAI Webstores",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "init-db": "node init.js"
   },
   "dependencies": {
     "express": "^4.18.2",
