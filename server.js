@@ -43,48 +43,99 @@ app.get('/view/:handle', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Loading Storefront...</title>
+        <title>Loading...</title>
         <style>
-            body { background: #0f0f0f; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; }
-            .loader { border: 3px solid #333; border-top: 3px solid #00d4ff; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+            :root { --accent: #00d4ff; --bg: #0f0f0f; --card: #1a1a1a; }
+            body { background: var(--bg); color: white; margin: 0; font-family: -apple-system, sans-serif; }
+            .loader-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+            .loader { border: 3px solid #333; border-top: 3px solid var(--accent); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            #content { display: none; width: 100%; max-width: 600px; padding: 20px; text-align: center; }
-            img.logo { max-width: 120px; border-radius: 15px; margin-bottom: 15px; }
+            
+            #content { display: none; padding: 20px; max-width: 600px; margin: 0 auto; }
+            header { text-align: center; padding: 40px 0; }
+            .logo { max-width: 100px; border-radius: 20%; margin-bottom: 15px; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+            
+            .section-title { color: var(--accent); font-size: 1.5rem; margin: 30px 0 15px 0; border-left: 4px solid var(--accent); padding-left: 10px; }
+            .item-card { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #222; }
+            .item-info { flex: 1; }
+            .item-name { font-weight: bold; font-size: 1.1rem; display: block; }
+            .item-desc { color: #888; font-size: 0.85rem; }
+            .item-price { color: #00ff00; font-weight: bold; font-size: 1.1rem; margin-left: 15px; }
+            
+            .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 15px; border-radius: 50px; display: block; text-align: center; margin-top: 40px; font-weight: bold; }
         </style>
     </head>
     <body>
-        <div id="loader-box">
+        <div id="loader-box" class="loader-wrap">
             <div class="loader"></div>
-            <p style="color: #888;">SYNCING STOREFRONT...</p>
+            <p style="color: #888; margin-top: 20px;">SYNCING STOREFRONT...</p>
         </div>
+
         <div id="content">
-            <img id="store-logo" class="logo" src="" alt="">
-            <h1 id="store-name"></h1>
-            <p id="store-tagline" style="color: #aaa;"></p>
-            <hr style="border: 0.5px solid #333; margin: 20px 0;">
-            <div id="store-data-display"></div>
+            <header>
+                <img id="store-logo" class="logo" src="" alt="">
+                <h1 id="store-name" style="margin:0;"></h1>
+                <p id="store-tagline" style="color: #aaa; margin: 5px 0;"></p>
+            </header>
+
+            <div id="menu-container"></div>
+
+            <a id="wa-link" href="#" class="wa-btn">💬 Order via WhatsApp</a>
+            
+            <footer style="text-align:center; padding: 40px; color: #444; font-size: 0.8rem;">
+                Powered by Retail OS
+            </footer>
         </div>
+
         <script>
             const handle = window.location.pathname.split('/').pop();
-            async function loadStore() {
+            
+            async function bootStore() {
                 try {
                     const response = await fetch('/api/store/' + handle);
                     const data = await response.json();
+                    
                     if (data.error) {
-                        document.body.innerHTML = "<h1>Store Not Found</h1>";
+                        document.body.innerHTML = "<div class='loader-wrap'><h1>Offline</h1><p>"+data.error+"</p></div>";
                         return;
                     }
+
                     document.getElementById('loader-box').style.display = 'none';
                     document.getElementById('content').style.display = 'block';
+
+                    // Set Identity
                     document.title = data.businessName;
                     document.getElementById('store-name').innerText = data.businessName;
                     document.getElementById('store-tagline').innerText = data.tagline;
                     if(data.logo) document.getElementById('store-logo').src = data.logo;
+                    document.getElementById('wa-link').href = "https://wa.me/" + data.wa;
+
+                    // Render Menu
+                    const container = document.getElementById('menu-container');
+                    data.menu.forEach(section => {
+                        const secNode = document.createElement('div');
+                        secNode.innerHTML = '<h2 class="section-title">' + section.title + '</h2>';
+                        
+                        section.items.forEach(item => {
+                            const itemNode = document.createElement('div');
+                            itemNode.className = 'item-card';
+                            itemNode.innerHTML = \`
+                                <div class="item-info">
+                                    <span class="item-name">\${item.name}</span>
+                                    <span class="item-desc">\${item.desc || ''}</span>
+                                </div>
+                                <span class="item-price">\${data.curr} \${item.price}</span>
+                            \`;
+                            secNode.appendChild(itemNode);
+                        });
+                        container.appendChild(secNode);
+                    });
+                    
                 } catch (err) {
-                    document.body.innerHTML = "<h1>Connection Error</h1>";
+                    document.body.innerHTML = "<div class='loader-wrap'><h1>Error Connecting</h1></div>";
                 }
             }
-            loadStore();
+            bootStore();
         </script>
     </body>
     </html>
