@@ -36,7 +36,6 @@ const initDb = async () => {
 initDb();
 
 /* ================== THE VIEWER (The "Mask" Engine) ================== */
-// This serves a real HTML page when someone visits .../view/your-store-name
 app.get('/view/:handle', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -46,19 +45,18 @@ app.get('/view/:handle', (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Loading Storefront...</title>
         <style>
-            body { background: #0f0f0f; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+            body { background: #0f0f0f; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; }
             .loader { border: 3px solid #333; border-top: 3px solid #00d4ff; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px; }
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
             #content { display: none; width: 100%; max-width: 600px; padding: 20px; text-align: center; }
-            img.logo { max-width: 120px; border-radius: 15px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+            img.logo { max-width: 120px; border-radius: 15px; margin-bottom: 15px; }
         </style>
     </head>
     <body>
         <div id="loader-box">
             <div class="loader"></div>
-            <p style="letter-spacing: 1px; color: #888;">SYNCING STOREFRONT...</p>
+            <p style="color: #888;">SYNCING STOREFRONT...</p>
         </div>
-
         <div id="content">
             <img id="store-logo" class="logo" src="" alt="">
             <h1 id="store-name"></h1>
@@ -66,35 +64,22 @@ app.get('/view/:handle', (req, res) => {
             <hr style="border: 0.5px solid #333; margin: 20px 0;">
             <div id="store-data-display"></div>
         </div>
-
         <script>
             const handle = window.location.pathname.split('/').pop();
-            
             async function loadStore() {
                 try {
                     const response = await fetch('/api/store/' + handle);
                     const data = await response.json();
-                    
                     if (data.error) {
-                        document.body.innerHTML = "<div style='text-align:center;'><h1>404</h1><p>" + data.error + "</p></div>";
+                        document.body.innerHTML = "<h1>Store Not Found</h1>";
                         return;
                     }
-
-                    // Hide Loader, Show Content
                     document.getElementById('loader-box').style.display = 'none';
-                    const content = document.getElementById('content');
-                    content.style.display = 'block';
-
-                    // Update UI with Data
+                    document.getElementById('content').style.display = 'block';
                     document.title = data.businessName;
                     document.getElementById('store-name').innerText = data.businessName;
                     document.getElementById('store-tagline').innerText = data.tagline;
                     if(data.logo) document.getElementById('store-logo').src = data.logo;
-
-                    // Note: This is where you can inject your 843-line layout engine 
-                    // to render the categories, products, and cart!
-                    console.log("Store Config Received:", data);
-                    
                 } catch (err) {
                     document.body.innerHTML = "<h1>Connection Error</h1>";
                 }
@@ -109,7 +94,6 @@ app.get('/view/:handle', (req, res) => {
 /* ================== API: PUBLISH/UPDATE STORE ================== */
 app.post('/api/publish', async (req, res) => {
   const { handle, configData } = req.body;
-  
   try {
     const checkStore = await pool.query('SELECT created_at FROM stores WHERE handle = $1', [handle]);
     let trialDaysLeft = 7;
@@ -119,42 +103,34 @@ app.post('/api/publish', async (req, res) => {
       const createdDate = new Date(store.created_at);
       const diffDays = Math.ceil((new Date() - createdDate) / (1000 * 60 * 60 * 24));
       trialDaysLeft = 7 - diffDays;
-
       if (!configData.isActivated && trialDaysLeft <= 0) {
         return res.json({ status: 'expired', success: false, message: "Trial Expired" });
       }
     }
 
-    const query = \`
+    const query = `
       INSERT INTO stores (handle, config_data) 
       VALUES ($1, $2) 
       ON CONFLICT (handle) 
       DO UPDATE SET config_data = $2, updated_at = NOW();
-    \`;
+    `;
     await pool.query(query, [handle, configData]);
-    
-    res.json({ 
-      success: true, 
-      message: "Store Published!", 
-      trialDaysLeft: configData.isActivated ? 'Unlimited' : trialDaysLeft 
-    });
+    res.json({ success: true, message: "Store Published!", trialDaysLeft: configData.isActivated ? 'Unlimited' : trialDaysLeft });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
-/* ================== API: GET STORE DATA (JSON BLOB) ================== */
+/* ================== API: GET STORE DATA ================== */
 app.get('/api/store/:handle', async (req, res) => {
   try {
     const result = await pool.query('SELECT config_data, created_at FROM stores WHERE handle = $1', [req.params.handle]);
-    
     if (result.rows.length > 0) {
       const store = result.rows[0];
       const data = store.config_data;
       const createdDate = new Date(store.created_at);
       const diffDays = Math.ceil((new Date() - createdDate) / (1000 * 60 * 60 * 24));
-      
       if (!data.isActivated && diffDays > 7) {
         return res.status(403).json({ error: "Store offline: Trial expired." });
       }
@@ -170,14 +146,7 @@ app.get('/api/store/:handle', async (req, res) => {
 /* ================== API: ADMIN DASHBOARD ================== */
 app.get('/api/admin/all-stores', async (req, res) => {
   try {
-    const result = await pool.query(\`
-        SELECT handle, 
-               created_at, 
-               is_active, 
-               config_data->>'businessName' as name 
-        FROM stores 
-        ORDER BY created_at DESC
-    \`);
+    const result = await pool.query("SELECT handle, created_at, is_active, config_data->>'businessName' as name FROM stores ORDER BY created_at DESC");
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: "Admin access error" });
@@ -187,21 +156,12 @@ app.get('/api/admin/all-stores', async (req, res) => {
 /* ================== API: MARKETPLACE ================== */
 app.get('/api/marketplace', async (req, res) => {
   try {
-    const result = await pool.query(\`
-      SELECT handle, 
-      config_data->>'businessName' as name, 
-      config_data->>'logo' as logo,
-      config_data->>'tagline' as tagline
-      FROM stores 
-      WHERE is_active = true 
-      ORDER BY created_at DESC
-    \`);
+    const result = await pool.query("SELECT handle, config_data->>'businessName' as name, config_data->>'logo' as logo, config_data->>'tagline' as tagline FROM stores WHERE is_active = true ORDER BY created_at DESC");
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Start Server (Render usually uses port 10000)
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(\`🚀 Server running on port \${PORT}\`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
