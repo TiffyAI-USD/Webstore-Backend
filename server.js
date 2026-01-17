@@ -3,43 +3,60 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const app = express();
 
-// 1. FIXED: Increase limits to handle those large Base64 image strings
+// 1. LIMIT FIX: Handle those large image strings (Base64)
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// DATABASE CONNECTION
+// 2. DATABASE CONNECTION
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
+// 3. AUTO-INITIALIZER: This fixes "relation stores does not exist"
+const initDb = async () => {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS stores (
+      id SERIAL PRIMARY KEY,
+      handle TEXT UNIQUE NOT NULL,
+      config_data JSONB NOT NULL,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+  try {
+    await pool.query(createTableQuery);
+    console.log("✅ Database Table 'stores' is verified/created.");
+  } catch (err) {
+    console.error("❌ Error initializing database:", err);
+  }
+};
+initDb();
 
 /* ================== API: PUBLISH/UPDATE STORE ================== */
 app.post('/api/publish', async (req, res) => {
   const { handle, configData } = req.body;
   
   try {
-    // 2. TRIAL LOGIC: Check if store exists to get the creation date
-    const checkStore = await pool.query('SELECT created_at, is_active FROM stores WHERE handle = $1', [handle]);
+    // Check if store exists to calculate trial time
+    const checkStore = await pool.query('SELECT created_at FROM stores WHERE handle = $1', [handle]);
     
     let trialDaysLeft = 7;
     
     if (checkStore.rows.length > 0) {
       const store = checkStore.rows[0];
       const createdDate = new Date(store.created_at);
-      const now = new Date();
-      const diffTime = Math.abs(now - createdDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
+      const diffDays = Math.ceil((new Date() - createdDate) / (1000 * 60 * 60 * 24));
       trialDaysLeft = 7 - diffDays;
 
-      // 3. EXPIRY GUARD: If not activated and trial is over, block the sync
+      // 7-DAY SUBSCRIPTION GUARD
       if (!configData.isActivated && trialDaysLeft <= 0) {
-        return res.json({ status: 'expired', success: false, message: "7-Day Trial Expired" });
+        return res.json({ status: 'expired', success: false, message: "Trial Expired" });
       }
     }
 
-    // 4. SAVE TO DB: Update or Insert
     const query = `
       INSERT INTO stores (handle, config_data) 
       VALUES ($1, $2) 
@@ -55,11 +72,11 @@ app.post('/api/publish', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: "Database error" });
+    res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
-/* ================== API: GET STORE DATA ================== */
+/* ================== API: GET STORE DATA (Live Viewer) ================== */
 app.get('/api/store/:handle', async (req, res) => {
   try {
     const result = await pool.query('SELECT config_data, created_at FROM stores WHERE handle = $1', [req.params.handle]);
@@ -67,13 +84,12 @@ app.get('/api/store/:handle', async (req, res) => {
     if (result.rows.length > 0) {
       const store = result.rows[0];
       const data = store.config_data;
-
-      // 5. LIVE VIEW GUARD: Check trial status even for visitors
       const createdDate = new Date(store.created_at);
       const diffDays = Math.ceil((new Date() - createdDate) / (1000 * 60 * 60 * 24));
       
+      // Block visitors if trial expired
       if (!data.isActivated && diffDays > 7) {
-        return res.status(403).json({ error: "Trial Expired. Contact owner to activate." });
+        return res.status(403).json({ error: "Store offline: Trial expired." });
       }
 
       res.json(data);
@@ -85,5 +101,23 @@ app.get('/api/store/:handle', async (req, res) => {
   }
 });
 
+/* ================== API: MARKETPLACE (Coming Soon) ================== */
+app.get('/api/marketplace', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT handle, 
+      config_data->>'businessName' as name, 
+      config_data->>'logo' as logo,
+      config_data->>'tagline' as tagline
+      FROM stores 
+      WHERE is_active = true 
+      ORDER BY created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
