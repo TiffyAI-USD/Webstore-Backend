@@ -48,58 +48,56 @@ app.get('/view/:handle', (req, res) => {
             :root { --accent: #00d4ff; --bg: #0f0f0f; --card: #1a1a1a; --text: #ffffff; }
             body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; line-height: 1.6; }
             
+            /* Banner & Header */
+            .banner-container { width: 100%; height: 180px; background: #222; overflow: hidden; position: relative; }
+            #store-banner { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; }
+            
+            header { text-align: center; margin-top: -55px; position: relative; z-index: 10; padding-bottom: 10px; }
+            .logo { width: 110px; height: 110px; object-fit: cover; border-radius: 22%; border: 4px solid var(--bg); box-shadow: 0 10px 25px rgba(0,0,0,0.5); background: var(--card); }
+            
+            /* Content Area */
+            #content { display: none; padding: 0 20px 20px 20px; max-width: 600px; margin: 0 auto; animation: fadeIn 0.5s ease; }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+            .section-title { color: var(--accent); font-size: 1.2rem; margin: 35px 0 15px 0; border-left: 4px solid var(--accent); padding-left: 12px; text-transform: uppercase; letter-spacing: 1px; }
+            
+            .item-card { background: var(--card); padding: 12px; border-radius: 16px; margin-bottom: 15px; display: flex; align-items: center; border: 1px solid #252525; }
+            .item-img { width: 70px; height: 70px; border-radius: 10px; object-fit: cover; margin-right: 15px; background: #222; flex-shrink: 0; }
+            
+            .item-details { flex: 1; }
+            .item-name { font-weight: 700; font-size: 1rem; display: block; }
+            .item-desc { color: #888; font-size: 0.8rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+            .item-price { color: #00ff00; font-weight: 800; font-size: 1rem; padding-left: 10px; }
+            
+            .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 18px; border-radius: 50px; display: flex; align-items: center; justify-content: center; margin: 40px 0; font-weight: bold; }
             .loader-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
             .loader { border: 3px solid #333; border-top: 3px solid var(--accent); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            
-            #content { display: none; padding: 20px; max-width: 600px; margin: 0 auto; animation: fadeIn 0.5s ease; }
-            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-            header { text-align: center; padding: 40px 20px; }
-            .logo { max-width: 110px; height: 110px; object-fit: cover; border-radius: 22%; margin-bottom: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 2px solid #222; }
-            
-            .section-title { color: var(--accent); font-size: 1.4rem; margin: 35px 0 15px 0; border-left: 4px solid var(--accent); padding-left: 12px; letter-spacing: 1px; text-transform: uppercase; }
-            
-            .item-card { background: var(--card); padding: 12px; border-radius: 16px; margin-bottom: 15px; display: flex; align-items: center; border: 1px solid #252525; transition: transform 0.2s; }
-            .item-card:active { transform: scale(0.98); }
-            
-            .item-img { width: 80px; height: 80px; border-radius: 12px; object-fit: cover; margin-right: 15px; background: #222; flex-shrink: 0; }
-            
-            .item-details { flex: 1; }
-            .item-name { font-weight: 700; font-size: 1.1rem; display: block; margin-bottom: 2px; }
-            .item-desc { color: #888; font-size: 0.85rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-            
-            .item-price { color: #00ff00; font-weight: 800; font-size: 1.1rem; padding-left: 10px; white-space: nowrap; }
-            
-            .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 18px; border-radius: 50px; display: flex; align-items: center; justify-content: center; margin: 40px 0; font-weight: bold; font-size: 1.1rem; box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3); }
-            .wa-btn span { margin-left: 10px; }
-            
-            footer { text-align: center; padding: 40px; color: #444; font-size: 0.75rem; letter-spacing: 1px; }
         </style>
     </head>
     <body>
         <div id="loader-box" class="loader-wrap">
             <div class="loader"></div>
-            <p style="color: #666; margin-top: 20px; font-weight: bold;">SYNCING RETAIL OS...</p>
+            <p style="color: #666; margin-top: 20px;">SYNCING STOREFRONT...</p>
         </div>
 
-        <div id="content">
-            <header>
-                <img id="store-logo" class="logo" src="" alt="Store Logo">
-                <h1 id="store-name" style="margin:0; font-size: 2rem;"></h1>
-                <p id="store-tagline" style="color: #888; margin: 8px 0; font-size: 1rem;"></p>
-            </header>
+        <div id="full-store" style="display:none;">
+            <div class="banner-container">
+                <img id="store-banner" src="" alt="">
+            </div>
 
-            <div id="menu-container"></div>
+            <div id="content">
+                <header>
+                    <img id="store-logo" class="logo" src="" alt="">
+                    <h1 id="store-name" style="margin:10px 0 0 0; font-size: 1.8rem;"></h1>
+                    <p id="store-tagline" style="color: #888; margin: 5px 0;"></p>
+                </header>
 
-            <a id="wa-link" href="#" class="wa-btn">
-                <svg width="24" height="24" fill="white" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.438 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.301-.15-1.779-.879-2.053-.979-.275-.1-.475-.15-.675.15-.199.299-.775.979-.95 1.174-.175.195-.349.219-.65.069-.3-.15-1.269-.467-2.417-1.492-.893-.796-1.494-1.78-1.669-2.079-.175-.299-.019-.461.13-.61.135-.133.301-.349.451-.523.149-.174.199-.299.299-.498.1-.199.05-.374-.025-.524-.075-.15-.675-1.625-.925-2.224-.244-.584-.493-.505-.675-.514-.175-.008-.375-.01-.575-.01s-.525.075-.799.375c-.275.3-.1.749-.1 1.224 0 .475.175.925.425 1.275.25.35 1.05 1.603 2.544 2.249.356.154.633.245.85.314.357.113.682.097.939.059.286-.042.879-.359 1.003-.707.125-.349.125-.648.088-.708-.037-.06-.138-.099-.438-.249z"/></svg>
-                <span>Order via WhatsApp</span>
-            </a>
-            
-            <footer id="footer-area">
-                <p>Powered by Retail OS</p>
-            </footer>
+                <div id="menu-container"></div>
+
+                <a id="wa-link" href="#" class="wa-btn">💬 Order via WhatsApp</a>
+                <footer style="text-align:center; padding: 20px; color: #444; font-size: 0.7rem;">Powered by Retail OS</footer>
+            </div>
         </div>
 
         <script>
@@ -116,46 +114,42 @@ app.get('/view/:handle', (req, res) => {
                     }
 
                     document.getElementById('loader-box').style.display = 'none';
+                    document.getElementById('full-store').style.display = 'block';
                     document.getElementById('content').style.display = 'block';
 
-                    // Set Identity
-                    document.title = data.businessName + " | Storefront";
+                    document.title = data.businessName;
                     document.getElementById('store-name').innerText = data.businessName;
                     document.getElementById('store-tagline').innerText = data.tagline;
+                    
                     if(data.logo) document.getElementById('store-logo').src = data.logo;
+                    if(data.banner) document.getElementById('store-banner').src = data.banner;
                     document.getElementById('wa-link').href = "https://wa.me/" + data.wa;
 
-                    // Render Menu
                     const container = document.getElementById('menu-container');
-                    if(data.menu && data.menu.length > 0) {
-                        data.menu.forEach(section => {
-                            const secNode = document.createElement('div');
-                            secNode.innerHTML = '<h2 class="section-title">' + section.title + '</h2>';
-                            
-                            section.items.forEach(item => {
-                                const itemNode = document.createElement('div');
-                                itemNode.className = 'item-card';
-                                
-                                // Support for images (checking common keys)
-                                const imgUri = item.image || item.img || '';
-                                const imgHtml = imgUri ? \`<img src="\${imgUri}" class="item-img" alt="\${item.name}">\` : '';
+                    data.menu.forEach(section => {
+                        const secNode = document.createElement('div');
+                        secNode.innerHTML = '<h2 class="section-title">' + section.title + '</h2>';
+                        
+                        section.items.forEach(item => {
+                            const itemNode = document.createElement('div');
+                            itemNode.className = 'item-card';
+                            const imgUri = item.image || item.img || '';
+                            const imgHtml = imgUri ? \`<img src="\${imgUri}" class="item-img">\` : '';
 
-                                itemNode.innerHTML = \`
-                                    \${imgHtml}
-                                    <div class="item-details">
-                                        <span class="item-name">\${item.name}</span>
-                                        <span class="item-desc">\${item.desc || ''}</span>
-                                    </div>
-                                    <span class="item-price">\${data.curr} \${item.price}</span>
-                                \`;
-                                secNode.appendChild(itemNode);
-                            });
-                            container.appendChild(secNode);
+                            itemNode.innerHTML = \`
+                                \${imgHtml}
+                                <div class="item-details">
+                                    <span class="item-name">\${item.name}</span>
+                                    <span class="item-desc">\${item.desc || ''}</span>
+                                </div>
+                                <span class="item-price">\${data.curr} \${item.price}</span>
+                            \`;
+                            secNode.appendChild(itemNode);
                         });
-                    }
-                    
+                        container.appendChild(secNode);
+                    });
                 } catch (err) {
-                    document.body.innerHTML = "<div class='loader-wrap'><h1>Connection Lost</h1><p>Try refreshing the page.</p></div>";
+                    document.body.innerHTML = "<h1>Error Connecting</h1>";
                 }
             }
             bootStore();
