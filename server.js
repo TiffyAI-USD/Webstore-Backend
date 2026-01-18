@@ -12,45 +12,57 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// --- DATABASE SYNC & AUTO-MIGRATION ---
 const initDb = async () => {
-  const query = `
-    CREATE TABLE IF NOT EXISTS stores (
-      id SERIAL PRIMARY KEY,
-      handle TEXT UNIQUE NOT NULL,
-      config_data JSONB NOT NULL,
-      owner_whatsapp TEXT,
-      trial_expires TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '7 days'),
-      is_active BOOLEAN DEFAULT TRUE,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS sales (
-      id SERIAL PRIMARY KEY,
-      store_handle TEXT,
-      order_data JSONB,
-      total_amount NUMERIC,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `;
   try {
-    await pool.query(query);
-    console.log("✅ Database Synced.");
+    // Create base tables
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS stores (
+        id SERIAL PRIMARY KEY,
+        handle TEXT UNIQUE NOT NULL,
+        config_data JSONB NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS sales (
+        id SERIAL PRIMARY KEY,
+        store_handle TEXT,
+        order_data JSONB,
+        total_amount NUMERIC,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Add columns if they were missing from older versions (Fixes the crash)
+    await pool.query(`
+      ALTER TABLE stores ADD COLUMN IF NOT EXISTS owner_whatsapp TEXT;
+      ALTER TABLE stores ADD COLUMN IF NOT EXISTS trial_expires TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '7 days');
+    `);
+    
+    console.log("✅ Database Synced & Migrated.");
   } catch (err) { console.error("❌ DB Error:", err); }
 };
 initDb();
 
-/* ================== THE VIEWER (Your 256-Line Proven Logic) ================== */
+/* ================== THE VIEWER (The Storefront) ================== */
 app.get('/view/:handle', async (req, res) => {
-  // Check Trial Status before serving
-  const check = await pool.query('SELECT is_active, trial_expires FROM stores WHERE handle = $1', [req.params.handle]);
-  if (check.rows.length > 0) {
-      const store = check.rows[0];
-      if (!store.is_active || new Date(store.trial_expires) < new Date()) {
-          return res.send('<body style="background:#000;color:red;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;"><h1>STORE SUSPENDED</h1></body>');
-      }
-  }
+  try {
+    const check = await pool.query('SELECT is_active, trial_expires, config_data FROM stores WHERE handle = $1', [req.params.handle]);
+    
+    if (check.rows.length === 0) {
+        return res.status(404).send('<body style="background:#000;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;"><h1>Store Not Found</h1></body>');
+    }
 
-  res.send(`
+    const store = check.rows[0];
+    
+    // Safety check for suspended stores or expired trials
+    if (!store.is_active || (store.trial_expires && new Date(store.trial_expires) < new Date())) {
+        return res.send('<body style="background:#000;color:red;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;text-align:center;"><div><h1>STORE SUSPENDED</h1><p>Contact administrator to renew.</p></div></body>');
+    }
+
+    // Serving the HTML (Using standard quotes for safety against Render parser errors)
+    res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -60,12 +72,23 @@ app.get('/view/:handle', async (req, res) => {
         <style>
             :root { --accent: #00d4ff; --bg: #0f0f0f; --card: #1a1a1a; --text: #ffffff; }
             body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; line-height: 1.4; padding-bottom: 120px; overflow-x: hidden; }
+            
             .banner-container { width: 100%; height: 55vh; background: #000; position: relative; overflow: hidden; }
-            #store-banner { width: 100.2%; height: 100%; object-fit: cover; object-position: center; display: block; margin-left: -0.1%; }
+            #store-banner { 
+                width: 100.2%; 
+                height: 100%; 
+                object-fit: cover; 
+                object-position: center;
+                display: block;
+                margin-left: -0.1%;
+            }
             .banner-overlay { position: absolute; bottom: 0; width: 100%; height: 60%; background: linear-gradient(to top, var(--bg), transparent); }
+            
             header { text-align: center; margin-top: -60px; position: relative; z-index: 10; padding: 0 20px; }
             .logo { width: 120px; height: 120px; object-fit: cover; border-radius: 25px; border: 4px solid var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: var(--card); margin: 0 auto; display: none; }
+            
             .sales-count { background: rgba(0, 212, 255, 0.1); border: 1px solid var(--accent); color: var(--accent); padding: 5px 15px; border-radius: 50px; font-size: 0.8rem; font-weight: bold; margin-top: 15px; display: inline-block; }
+
             #content { display: none; max-width: 600px; margin: 0 auto; }
             .section-title { color: var(--accent); font-size: 1.4rem; margin: 40px 20px 15px 20px; font-weight: 800; text-transform: uppercase; }
             .item-card { background: var(--card); margin: 0 20px 25px 20px; border-radius: 24px; overflow: hidden; border: 1px solid #252525; }
@@ -75,9 +98,11 @@ app.get('/view/:handle', async (req, res) => {
             .item-name { font-weight: 800; font-size: 1.2rem; flex: 1; }
             .item-price { color: #00ff00; font-weight: 900; font-size: 1.2rem; margin-left: 10px; }
             .item-desc { color: #aaa; font-size: 0.95rem; margin-bottom: 20px; white-space: pre-wrap; }
+
             .qty-controls { display: flex; align-items: center; background: #222; border-radius: 50px; width: fit-content; padding: 5px 15px; }
             .qty-btn { background: none; border: none; color: var(--accent); font-size: 1.5rem; font-weight: bold; cursor: pointer; padding: 0 10px; }
             .qty-val { font-weight: bold; min-width: 30px; text-align: center; font-size: 1.1rem; color: #fff; }
+
             .order-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #111; border-top: 1px solid #333; padding: 20px; box-sizing: border-box; z-index: 1000; display: flex; justify-content: space-between; align-items: center; }
             .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-weight: 800; border: none; cursor: pointer; }
             .loader-wrap { display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -106,33 +131,40 @@ app.get('/view/:handle', async (req, res) => {
                 <button onclick="sendOrder()" class="wa-btn">SEND ORDER</button>
             </div>
         </div>
+
         <script>
             const handle = window.location.pathname.split('/').pop();
             let cart = {};
             let storeData = null;
+
             async function bootStore() {
                 try {
                     const response = await fetch('/api/store/' + handle);
                     storeData = await response.json();
                     const salesRes = await fetch('/api/sales/' + handle);
                     const salesData = await salesRes.json();
+                    
                     document.getElementById('loader-box').style.display = 'none';
                     document.getElementById('full-store').style.display = 'block';
                     document.getElementById('content').style.display = 'block';
                     document.getElementById('store-name').innerText = storeData.businessName;
                     document.getElementById('store-tagline').innerText = storeData.tagline;
+                    
                     if (salesData.length > 0) {
                         document.getElementById('analytics-box').innerHTML = '<div class="sales-count">🔥 ' + salesData.length + ' Orders Pushed</div>';
                     }
+
                     const logoEl = document.getElementById('store-logo');
                     if(storeData.logo && storeData.logo.trim() !== "") {
                         logoEl.src = storeData.logo;
                         logoEl.style.display = "block";
                     }
+
                     if(storeData.banner) document.getElementById('store-banner').src = storeData.banner;
                     renderMenu();
                 } catch (err) { console.error(err); }
             }
+
             function renderMenu() {
                 const container = document.getElementById('menu-container');
                 container.innerHTML = "";
@@ -162,6 +194,7 @@ app.get('/view/:handle', async (req, res) => {
                     container.appendChild(secNode);
                 });
             }
+
             function updateCart(key, price, delta, name) {
                 if (!cart[key]) cart[key] = { qty: 0, price: price, name: name };
                 cart[key].qty += delta;
@@ -175,6 +208,7 @@ app.get('/view/:handle', async (req, res) => {
                 Object.values(cart).forEach(i => total += (i.qty * i.price));
                 document.getElementById('float-total').innerText = storeData.curr + ' ' + total;
             }
+
             async function sendOrder() {
                 if (Object.keys(cart).length === 0) return alert("Select items first");
                 let total = 0;
@@ -196,17 +230,18 @@ app.get('/view/:handle', async (req, res) => {
     </body>
     </html>
   `);
+  } catch (err) { res.status(500).send("Critical View Error"); }
 });
 
-/* ================== OWNER DASHBOARD (New Section) ================== */
+/* ================== OWNER DASHBOARD ================== */
 app.get('/dashboard/:handle', (req, res) => {
     res.send(`<html><body style="background:#000;color:#fff;font-family:sans-serif;padding:20px;">
-        <h2>📊 Store Dashboard: ${req.params.handle}</h2>
-        <div id="stats" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <h2>📊 Dashboard: ${req.params.handle}</h2>
+        <div id="stats" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
             <div style="background:#111;padding:20px;border-radius:10px;">ORDERS: <b id="count">0</b></div>
             <div style="background:#111;padding:20px;border-radius:10px;">REVENUE: <b id="rev">0</b></div>
         </div>
-        <div id="list" style="margin-top:20px;"></div>
+        <div id="list">Loading...</div>
         <script>
             async function load() {
                 const r = await fetch('/api/sales/${req.params.handle}');
@@ -214,7 +249,7 @@ app.get('/dashboard/:handle', (req, res) => {
                 let rev = 0;
                 document.getElementById('list').innerHTML = data.map(s => {
                     rev += parseFloat(s.total_amount || 0);
-                    return '<div style="background:#111;padding:10px;margin-bottom:5px;border-radius:5px;">Order Total: ' + s.total_amount + '</div>';
+                    return '<div style="background:#111;padding:15px;margin-bottom:10px;border-radius:10px;border:1px solid #222;"><b>Total: ' + s.total_amount + '</b><br><small>' + new Date(s.created_at).toLocaleString() + '</small></div>';
                 }).join('');
                 document.getElementById('count').innerText = data.length;
                 document.getElementById('rev').innerText = rev.toFixed(2);
@@ -223,27 +258,25 @@ app.get('/dashboard/:handle', (req, res) => {
         </script></body></html>`);
 });
 
-/* ================== ADMIN MASTER (Your View Only) ================== */
+/* ================== ADMIN MASTER ================== */
 app.get('/admin/master', async (req, res) => {
-    const r = await pool.query("SELECT handle, owner_whatsapp, is_active FROM stores ORDER BY created_at DESC");
-    const rows = r.rows.map(s => `<tr><td style="padding:10px;border:1px solid #333;">${s.handle}</td><td style="padding:10px;border:1px solid #333;">${s.owner_whatsapp || 'No WhatsApp'}</td><td style="padding:10px;border:1px solid #333;">${s.is_active}</td></tr>`).join('');
-    res.send(`<html><body style="background:#000;color:#fff;font-family:sans-serif;padding:20px;"><h1>👑 Master Admin</h1><table style="width:100%;border-collapse:collapse;"><tr><th>Store</th><th>Contact</th><th>Active</th></tr>${rows}</table></body></html>`);
+    try {
+        const r = await pool.query("SELECT handle, owner_whatsapp, is_active, trial_expires FROM stores ORDER BY created_at DESC");
+        const rows = r.rows.map(s => `<tr><td style="padding:10px;border:1px solid #333;">${s.handle}</td><td style="padding:10px;border:1px solid #333;">${s.owner_whatsapp || 'N/A'}</td><td style="padding:10px;border:1px solid #333;">${new Date(s.trial_expires).toLocaleDateString()}</td><td style="padding:10px;border:1px solid #333;">${s.is_active}</td></tr>`).join('');
+        res.send(`<html><body style="background:#000;color:#fff;font-family:sans-serif;padding:20px;"><h1>👑 Master Control</h1><table style="width:100%;border-collapse:collapse;background:#111;"><tr><th>Store</th><th>WhatsApp</th><th>Trial Ends</th><th>Active</th></tr>${rows}</table></body></html>`);
+    } catch (e) { res.send("Admin Error"); }
 });
 
 /* ================== API SECTION ================== */
 app.get('/api/sales/:handle', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT order_data, total_amount, created_at FROM sales WHERE store_handle = $1', [req.params.handle]);
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  const result = await pool.query('SELECT * FROM sales WHERE store_handle = $1 ORDER BY created_at DESC', [req.params.handle]);
+  res.json(result.rows);
 });
 
 app.post('/api/log-sale', async (req, res) => {
-  try {
-    const { handle, cart, total } = req.body;
-    await pool.query('INSERT INTO sales (store_handle, order_data, total_amount) VALUES ($1, $2, $3)', [handle, cart, total]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  const { handle, cart, total } = req.body;
+  await pool.query('INSERT INTO sales (store_handle, order_data, total_amount) VALUES ($1, $2, $3)', [handle, cart, total]);
+  res.json({ success: true });
 });
 
 app.post('/api/publish', async (req, res) => {
@@ -255,12 +288,10 @@ app.post('/api/publish', async (req, res) => {
 });
 
 app.get('/api/store/:handle', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT config_data FROM stores WHERE handle = $1', [req.params.handle]);
-    if (result.rows.length > 0) res.json(result.rows[0].config_data);
-    else res.status(404).json({ error: "Store not found" });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  const result = await pool.query('SELECT config_data FROM stores WHERE handle = $1', [req.params.handle]);
+  if (result.rows.length > 0) res.json(result.rows[0].config_data);
+  else res.status(404).json({ error: "Store not found" });
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log('🚀 Running Full Retail OS'));
+app.listen(PORT, () => console.log('🚀 Final Retail OS Engine Live'));
