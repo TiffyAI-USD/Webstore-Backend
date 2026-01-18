@@ -268,17 +268,21 @@ app.get('/admin/master', async (req, res) => {
 });
 
 /* ================== API SECTION ================== */
+
+// 1. Existing: Needed for Dashboard & Analytics
 app.get('/api/sales/:handle', async (req, res) => {
   const result = await pool.query('SELECT * FROM sales WHERE store_handle = $1 ORDER BY created_at DESC', [req.params.handle]);
   res.json(result.rows);
 });
 
+// 2. Existing: Needed for WhatsApp Ordering
 app.post('/api/log-sale', async (req, res) => {
   const { handle, cart, total } = req.body;
   await pool.query('INSERT INTO sales (store_handle, order_data, total_amount) VALUES ($1, $2, $3)', [handle, cart, total]);
   res.json({ success: true });
 });
 
+// 3. Existing: Needed for the Editor to save work
 app.post('/api/publish', async (req, res) => {
   try {
     const { handle, configData, ownerWhatsapp } = req.body;
@@ -287,10 +291,29 @@ app.post('/api/publish', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false }); }
 });
 
+// 4. Existing: Needed for the storefront to load visuals
 app.get('/api/store/:handle', async (req, res) => {
   const result = await pool.query('SELECT config_data FROM stores WHERE handle = $1', [req.params.handle]);
   if (result.rows.length > 0) res.json(result.rows[0].config_data);
   else res.status(404).json({ error: "Store not found" });
+});
+
+// 5. NEW: This connects your Global Store Manager Dashboard
+app.get('/api/admin/all-stores', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT 
+        handle, 
+        is_active, 
+        created_at, 
+        config_data->>'businessName' as name 
+      FROM stores 
+      ORDER BY created_at DESC
+    `);
+    res.json(r.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 const PORT = process.env.PORT || 10000;
