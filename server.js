@@ -269,41 +269,48 @@ app.get('/admin/master', async (req, res) => {
 
 /* ================== API SECTION ================== */
 
-// 1. Existing: Needed for Dashboard & Analytics
+// 1. Dashboard & Analytics
 app.get('/api/sales/:handle', async (req, res) => {
   const result = await pool.query('SELECT * FROM sales WHERE store_handle = $1 ORDER BY created_at DESC', [req.params.handle]);
   res.json(result.rows);
 });
 
-// 2. Existing: Needed for WhatsApp Ordering
+// 2. WhatsApp Ordering
 app.post('/api/log-sale', async (req, res) => {
   const { handle, cart, total } = req.body;
   await pool.query('INSERT INTO sales (store_handle, order_data, total_amount) VALUES ($1, $2, $3)', [handle, cart, total]);
   res.json({ success: true });
 });
 
-// 3. Existing: Needed for the Editor to save work
+// 3. Editor Publishing (Now saves WhatsApp number)
 app.post('/api/publish', async (req, res) => {
   try {
     const { handle, configData, ownerWhatsapp } = req.body;
-    await pool.query("INSERT INTO stores (handle, config_data, owner_whatsapp) VALUES ($1, $2, $3) ON CONFLICT (handle) DO UPDATE SET config_data = $2, owner_whatsapp = EXCLUDED.owner_whatsapp", [handle, configData, ownerWhatsapp]);
+    await pool.query(`
+      INSERT INTO stores (handle, config_data, owner_whatsapp) 
+      VALUES ($1, $2, $3) 
+      ON CONFLICT (handle) DO UPDATE SET 
+        config_data = $2, 
+        owner_whatsapp = EXCLUDED.owner_whatsapp`, 
+    [handle, configData, ownerWhatsapp]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false }); }
 });
 
-// 4. Existing: Needed for the storefront to load visuals
+// 4. Storefront Data Loading
 app.get('/api/store/:handle', async (req, res) => {
   const result = await pool.query('SELECT config_data FROM stores WHERE handle = $1', [req.params.handle]);
   if (result.rows.length > 0) res.json(result.rows[0].config_data);
   else res.status(404).json({ error: "Store not found" });
 });
 
-// 5. NEW: This connects your Global Store Manager Dashboard
+// 5. Global Store Manager: List All Stores (Broadcast-Ready)
 app.get('/api/admin/all-stores', async (req, res) => {
   try {
     const r = await pool.query(`
       SELECT 
         handle, 
+        owner_whatsapp,
         is_active, 
         created_at, 
         config_data->>'businessName' as name 
@@ -311,6 +318,21 @@ app.get('/api/admin/all-stores', async (req, res) => {
       ORDER BY created_at DESC
     `);
     res.json(r.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 6. Global Store Manager: Magic Actions (Ban & Extend)
+app.post('/api/admin/action', async (req, res) => {
+  const { handle, action } = req.body;
+  try {
+    if (action === 'toggle') {
+      await pool.query('UPDATE stores SET is_active = NOT is_active WHERE handle = $1', [handle]);
+    } else if (action === 'extend') {
+      await pool.query("UPDATE stores SET trial_expires = trial_expires + INTERVAL '30 days' WHERE handle = $1", [handle]);
+    }
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
