@@ -38,7 +38,7 @@ const initDb = async () => {
 };
 initDb();
 
-/* ================== THE VIEWER (The "Mask" Engine) ================== */
+                            /* ================== THE VIEWER (The "Mask" Engine) ================== */
 app.get('/view/:handle', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -51,54 +51,49 @@ app.get('/view/:handle', (req, res) => {
             :root { --accent: #00d4ff; --bg: #0f0f0f; --card: #1a1a1a; --text: #ffffff; }
             body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; line-height: 1.4; padding-bottom: 120px; }
             
-            /* BANNER: FULL SIZE & NO CROP */
+            /* FULL SCREEN BACKGROUND BANNER */
             .banner-container { 
                 width: 100%; 
-                min-height: 200px; 
+                height: 60vh; /* Large Hero Height */
                 background: #000; 
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                position: relative;
+                position: relative; 
                 overflow: hidden;
             }
             #store-banner { 
-                width: 100%; 
-                height: auto; 
-                max-height: 50vh; 
-                object-fit: contain; 
+                width: 100.2%; /* "A millimeter bigger" than the container to prevent edge gaps */
+                height: 100%; 
+                object-fit: cover; 
+                object-position: center;
                 display: block;
+                margin-left: -0.1%; /* Centers the slightly wider image */
             }
             .banner-overlay { 
                 position: absolute; 
                 bottom: 0; 
                 width: 100%; 
-                height: 100px; 
+                height: 50%; 
                 background: linear-gradient(to top, var(--bg), transparent); 
-                pointer-events: none;
             }
             
+            /* CONDITIONAL LOGO LOGIC */
             header { text-align: center; margin-top: -60px; position: relative; z-index: 10; padding: 0 20px; }
-            .logo { width: 110px; height: 110px; object-fit: cover; border-radius: 22px; border: 4px solid var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: var(--card); }
+            .logo { width: 120px; height: 120px; object-fit: cover; border-radius: 25px; border: 4px solid var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: var(--card); display: none; margin: 0 auto; }
             
-            #content { display: none; max-width: 600px; margin: 0 auto; animation: fadeIn 0.6s ease; }
-            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+            /* ANALYTICS BADGE */
+            .sales-count { background: rgba(0, 212, 255, 0.1); border: 1px solid var(--accent); color: var(--accent); padding: 5px 15px; border-radius: 50px; font-size: 0.8rem; font-weight: bold; margin-top: 10px; display: inline-block; }
 
+            #content { display: none; max-width: 600px; margin: 0 auto; }
             .section-title { color: var(--accent); font-size: 1.4rem; margin: 40px 20px 15px 20px; font-weight: 800; text-transform: uppercase; }
             
-            .item-card { background: var(--card); margin: 0 15px 25px 15px; border-radius: 24px; overflow: hidden; border: 1px solid #252525; }
+            /* PRODUCT CARDS - Sized slightly smaller than the banner */
+            .item-card { background: var(--card); margin: 0 20px 25px 20px; border-radius: 24px; overflow: hidden; border: 1px solid #252525; }
             .item-img { width: 100%; height: auto; max-height: 350px; object-fit: cover; display: block; }
             
             .item-body { padding: 20px; }
-            .stars { color: #ffcc00; font-size: 0.8rem; margin-bottom: 8px; letter-spacing: 2px; }
             .item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
             .item-name { font-weight: 800; font-size: 1.2rem; flex: 1; }
             .item-price { color: #00ff00; font-weight: 900; font-size: 1.2rem; margin-left: 10px; }
             .item-desc { color: #aaa; font-size: 0.95rem; margin-bottom: 20px; white-space: pre-wrap; }
-
-            .qty-controls { display: flex; align-items: center; background: #222; border-radius: 50px; width: fit-content; padding: 5px 15px; }
-            .qty-btn { background: none; border: none; color: var(--accent); font-size: 1.5rem; font-weight: bold; cursor: pointer; padding: 0 10px; }
-            .qty-val { font-weight: bold; min-width: 30px; text-align: center; font-size: 1.1rem; color: #fff; }
 
             .order-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #111; border-top: 1px solid #333; padding: 20px; box-sizing: border-box; z-index: 1000; display: flex; justify-content: space-between; align-items: center; }
             .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-weight: 800; border: none; }
@@ -122,7 +117,7 @@ app.get('/view/:handle', (req, res) => {
                     <img id="store-logo" class="logo" src="" alt="">
                     <h1 id="store-name" style="margin:10px 0 5px 0; font-size: 2rem; font-weight: 900;"></h1>
                     <p id="store-tagline" style="color: #888; margin: 0;"></p>
-                </header>
+                    <div id="analytics-box"></div> </header>
                 <div id="menu-container"></div>
             </div>
 
@@ -145,93 +140,40 @@ app.get('/view/:handle', (req, res) => {
                     const response = await fetch('/api/store/' + handle);
                     storeData = await response.json();
                     
+                    // Fetch Sales Analytics
+                    const salesRes = await fetch('/api/sales/' + handle);
+                    const salesData = await salesRes.json();
+                    
                     document.getElementById('loader-box').style.display = 'none';
                     document.getElementById('full-store').style.display = 'block';
                     document.getElementById('content').style.display = 'block';
 
                     document.getElementById('store-name').innerText = storeData.businessName;
                     document.getElementById('store-tagline').innerText = storeData.tagline;
-                    if(storeData.logo) document.getElementById('store-logo').src = storeData.logo;
+                    
+                    // Analytics Sync
+                    if (salesData.length > 0) {
+                        document.getElementById('analytics-box').innerHTML = \`
+                            <div class="sales-count">🔥 \${salesData.length} Orders Pushed via Link</div>
+                        \`;
+                    }
+
+                    // LOGO HIDE/SHOW LOGIC
+                    const logoEl = document.getElementById('store-logo');
+                    if(storeData.logo && storeData.logo.trim() !== "") {
+                        logoEl.src = storeData.logo;
+                        logoEl.style.display = "block";
+                    } else {
+                        logoEl.style.display = "none";
+                    }
+
                     if(storeData.banner) document.getElementById('store-banner').src = storeData.banner;
 
                     renderMenu();
                 } catch (err) { console.error(err); }
             }
 
-            function renderMenu() {
-                const container = document.getElementById('menu-container');
-                container.innerHTML = "";
-                storeData.menu.forEach((section, sIdx) => {
-                    const secNode = document.createElement('div');
-                    secNode.innerHTML = '<h2 class="section-title">' + section.title + '</h2>';
-                    
-                    section.items.forEach((item, iIdx) => {
-                        const key = sIdx + '-' + iIdx;
-                        const itemCard = document.createElement('div');
-                        itemCard.className = 'item-card';
-                        const imgUri = item.image || item.img || '';
-                        
-                        itemCard.innerHTML = \`
-                            \${imgUri ? '<img src="'+imgUri+'" class="item-img">' : ''}
-                            <div class="item-body">
-                                <div class="stars">★★★★★</div>
-                                <div class="item-header">
-                                    <span class="item-name">\${item.name}</span>
-                                    <span class="item-price">\${storeData.curr} \${item.price}</span>
-                                </div>
-                                <div class="item-desc">\${item.desc || ''}</div>
-                                <div class="qty-controls">
-                                    <button class="qty-btn" onclick="updateCart('\${key}', \${item.price}, -1, '\${item.name}')">−</button>
-                                    <span class="qty-val" id="qty-\${key}">0</span>
-                                    <button class="qty-btn" onclick="updateCart('\${key}', \${item.price}, 1, '\${item.name}')">+</button>
-                                </div>
-                            </div>
-                        \`;
-                        secNode.appendChild(itemCard);
-                    });
-                    container.appendChild(secNode);
-                });
-            }
-
-            function updateCart(key, price, delta, name) {
-                if (!cart[key]) cart[key] = { qty: 0, price: price, name: name };
-                cart[key].qty += delta;
-                if (cart[key].qty <= 0) {
-                    delete cart[key];
-                    document.getElementById('qty-'+key).innerText = "0";
-                } else {
-                    document.getElementById('qty-'+key).innerText = cart[key].qty;
-                }
-                updateFloatingTotal();
-            }
-
-            function updateFloatingTotal() {
-                let total = 0;
-                Object.values(cart).forEach(i => total += (i.qty * i.price));
-                document.getElementById('float-total').innerText = storeData.curr + ' ' + total;
-            }
-
-            async function sendOrder() {
-                if (Object.keys(cart).length === 0) return alert("Select items first!");
-                
-                let total = 0;
-                let text = "*NEW ORDER*\\n\\n";
-                Object.values(cart).forEach(i => {
-                    text += "• " + i.qty + "x " + i.name + " (" + storeData.curr + " " + (i.qty * i.price) + ")\\n";
-                    total += (i.qty * i.price);
-                });
-                text += "\\n*TOTAL: " + storeData.curr + " " + total + "*";
-
-                // SYNC TO DB
-                await fetch('/api/log-sale', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ handle, cart, total })
-                });
-
-                window.location.href = "https://wa.me/" + storeData.wa + "?text=" + encodeURIComponent(text);
-            }
-            bootStore();
+            // ... (keep rest of renderMenu and sendOrder logic from last night) ...
         </script>
     </body>
     </html>
