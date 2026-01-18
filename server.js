@@ -12,6 +12,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// 1. DATABASE INIT (Ensures all tables exist for tomorrow)
 const initDb = async () => {
   const query = `
     CREATE TABLE IF NOT EXISTS stores (
@@ -32,11 +33,12 @@ const initDb = async () => {
   `;
   try {
     await pool.query(query);
-    console.log("✅ Database Synced.");
-  } catch (err) { console.error("❌ DB Error:", err); }
+    console.log("✅ Database Synced: Stores & Sales tables ready.");
+  } catch (err) { console.error("❌ DB Init Error:", err); }
 };
 initDb();
 
+/* ================== THE VIEWER (The "Mask" Engine) ================== */
 app.get('/view/:handle', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -44,30 +46,63 @@ app.get('/view/:handle', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Storefront</title>
+        <title>Retail OS Storefront</title>
         <style>
             :root { --accent: #00d4ff; --bg: #0f0f0f; --card: #1a1a1a; --text: #ffffff; }
             body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; line-height: 1.4; padding-bottom: 120px; }
-            .banner-container { width: 100%; height: 40vh; background: #111; overflow: hidden; position: relative; }
-            #store-banner { width: 100%; height: 100%; object-fit: cover; object-position: top; }
-            .banner-overlay { position: absolute; top:0; left:0; width:100%; height:100%; background: linear-gradient(to bottom, transparent, var(--bg)); }
+            
+            /* BANNER: FULL SIZE & NO CROP */
+            .banner-container { 
+                width: 100%; 
+                min-height: 200px; 
+                background: #000; 
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                overflow: hidden;
+            }
+            #store-banner { 
+                width: 100%; 
+                height: auto; 
+                max-height: 50vh; 
+                object-fit: contain; 
+                display: block;
+            }
+            .banner-overlay { 
+                position: absolute; 
+                bottom: 0; 
+                width: 100%; 
+                height: 100px; 
+                background: linear-gradient(to top, var(--bg), transparent); 
+                pointer-events: none;
+            }
+            
             header { text-align: center; margin-top: -60px; position: relative; z-index: 10; padding: 0 20px; }
-            .logo { width: 110px; height: 110px; object-fit: cover; border-radius: 22px; border: 4px solid var(--bg); background: var(--card); }
-            #content { display: none; max-width: 600px; margin: 0 auto; }
+            .logo { width: 110px; height: 110px; object-fit: cover; border-radius: 22px; border: 4px solid var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: var(--card); }
+            
+            #content { display: none; max-width: 600px; margin: 0 auto; animation: fadeIn 0.6s ease; }
+            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
             .section-title { color: var(--accent); font-size: 1.4rem; margin: 40px 20px 15px 20px; font-weight: 800; text-transform: uppercase; }
+            
             .item-card { background: var(--card); margin: 0 15px 25px 15px; border-radius: 24px; overflow: hidden; border: 1px solid #252525; }
             .item-img { width: 100%; height: auto; max-height: 350px; object-fit: cover; display: block; }
+            
             .item-body { padding: 20px; }
             .stars { color: #ffcc00; font-size: 0.8rem; margin-bottom: 8px; letter-spacing: 2px; }
             .item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
             .item-name { font-weight: 800; font-size: 1.2rem; flex: 1; }
             .item-price { color: #00ff00; font-weight: 900; font-size: 1.2rem; margin-left: 10px; }
             .item-desc { color: #aaa; font-size: 0.95rem; margin-bottom: 20px; white-space: pre-wrap; }
+
             .qty-controls { display: flex; align-items: center; background: #222; border-radius: 50px; width: fit-content; padding: 5px 15px; }
             .qty-btn { background: none; border: none; color: var(--accent); font-size: 1.5rem; font-weight: bold; cursor: pointer; padding: 0 10px; }
-            .qty-val { font-weight: bold; min-width: 30px; text-align: center; font-size: 1.1rem; color: white; }
+            .qty-val { font-weight: bold; min-width: 30px; text-align: center; font-size: 1.1rem; color: #fff; }
+
             .order-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #111; border-top: 1px solid #333; padding: 20px; box-sizing: border-box; z-index: 1000; display: flex; justify-content: space-between; align-items: center; }
-            .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-weight: 800; border: none; cursor: pointer; }
+            .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-weight: 800; border: none; }
+            
             .loader-wrap { display: flex; justify-content: center; align-items: center; height: 100vh; }
             .loader { border: 4px solid #333; border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -75,24 +110,31 @@ app.get('/view/:handle', (req, res) => {
     </head>
     <body>
         <div id="loader-box" class="loader-wrap"><div class="loader"></div></div>
+
         <div id="full-store" style="display:none;">
-            <div class="banner-container"><img id="store-banner" src=""><div class="banner-overlay"></div></div>
+            <div class="banner-container">
+                <img id="store-banner" src="" alt="">
+                <div class="banner-overlay"></div>
+            </div>
+
             <div id="content">
                 <header>
-                    <img id="store-logo" class="logo">
-                    <h1 id="store-name"></h1>
-                    <p id="store-tagline"></p>
+                    <img id="store-logo" class="logo" src="" alt="">
+                    <h1 id="store-name" style="margin:10px 0 5px 0; font-size: 2rem; font-weight: 900;"></h1>
+                    <p id="store-tagline" style="color: #888; margin: 0;"></p>
                 </header>
                 <div id="menu-container"></div>
             </div>
+
             <div class="order-bar">
                 <div style="display:flex; flex-direction:column;">
-                    <span style="color:#888; font-size:0.7rem;">TOTAL</span>
-                    <span id="float-total" style="font-weight:900; font-size:1.2rem; color:#00ff00;">--</span>
+                    <span style="color:#888; font-size:0.7rem;">TOTAL ESTIMATE</span>
+                    <span id="float-total" style="font-weight:900; font-size:1.3rem; color:#00ff00;">--</span>
                 </div>
                 <button onclick="sendOrder()" class="wa-btn">SEND ORDER</button>
             </div>
         </div>
+
         <script>
             const handle = window.location.pathname.split('/').pop();
             let cart = {};
@@ -102,13 +144,16 @@ app.get('/view/:handle', (req, res) => {
                 try {
                     const response = await fetch('/api/store/' + handle);
                     storeData = await response.json();
+                    
                     document.getElementById('loader-box').style.display = 'none';
                     document.getElementById('full-store').style.display = 'block';
                     document.getElementById('content').style.display = 'block';
+
                     document.getElementById('store-name').innerText = storeData.businessName;
                     document.getElementById('store-tagline').innerText = storeData.tagline;
                     if(storeData.logo) document.getElementById('store-logo').src = storeData.logo;
                     if(storeData.banner) document.getElementById('store-banner').src = storeData.banner;
+
                     renderMenu();
                 } catch (err) { console.error(err); }
             }
@@ -119,12 +164,15 @@ app.get('/view/:handle', (req, res) => {
                 storeData.menu.forEach((section, sIdx) => {
                     const secNode = document.createElement('div');
                     secNode.innerHTML = '<h2 class="section-title">' + section.title + '</h2>';
+                    
                     section.items.forEach((item, iIdx) => {
                         const key = sIdx + '-' + iIdx;
-                        const card = document.createElement('div');
-                        card.className = 'item-card';
-                        card.innerHTML = \`
-                            \${(item.image || item.img) ? '<img src="'+(item.image || item.img)+'" class="item-img">' : ''}
+                        const itemCard = document.createElement('div');
+                        itemCard.className = 'item-card';
+                        const imgUri = item.image || item.img || '';
+                        
+                        itemCard.innerHTML = \`
+                            \${imgUri ? '<img src="'+imgUri+'" class="item-img">' : ''}
                             <div class="item-body">
                                 <div class="stars">★★★★★</div>
                                 <div class="item-header">
@@ -137,8 +185,9 @@ app.get('/view/:handle', (req, res) => {
                                     <span class="qty-val" id="qty-\${key}">0</span>
                                     <button class="qty-btn" onclick="updateCart('\${key}', \${item.price}, 1, '\${item.name}')">+</button>
                                 </div>
-                            </div>\`;
-                        secNode.appendChild(card);
+                            </div>
+                        \`;
+                        secNode.appendChild(itemCard);
                     });
                     container.appendChild(secNode);
                 });
@@ -153,13 +202,18 @@ app.get('/view/:handle', (req, res) => {
                 } else {
                     document.getElementById('qty-'+key).innerText = cart[key].qty;
                 }
+                updateFloatingTotal();
+            }
+
+            function updateFloatingTotal() {
                 let total = 0;
                 Object.values(cart).forEach(i => total += (i.qty * i.price));
                 document.getElementById('float-total').innerText = storeData.curr + ' ' + total;
             }
 
             async function sendOrder() {
-                if (Object.keys(cart).length === 0) return alert("Select items first");
+                if (Object.keys(cart).length === 0) return alert("Select items first!");
+                
                 let total = 0;
                 let text = "*NEW ORDER*\\n\\n";
                 Object.values(cart).forEach(i => {
@@ -168,11 +222,13 @@ app.get('/view/:handle', (req, res) => {
                 });
                 text += "\\n*TOTAL: " + storeData.curr + " " + total + "*";
 
+                // SYNC TO DB
                 await fetch('/api/log-sale', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ handle, cart, total })
                 });
+
                 window.location.href = "https://wa.me/" + storeData.wa + "?text=" + encodeURIComponent(text);
             }
             bootStore();
@@ -180,6 +236,17 @@ app.get('/view/:handle', (req, res) => {
     </body>
     </html>
   `);
+});
+
+/* ================== API: SALES DATA (For Tomorrow) ================== */
+app.get('/api/sales/:handle', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT order_data, total_amount, created_at FROM sales WHERE store_handle = $1 ORDER BY created_at DESC', 
+      [req.params.handle]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/log-sale', async (req, res) => {
@@ -190,6 +257,7 @@ app.post('/api/log-sale', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+/* ================== API: CORE STORE OPS ================== */
 app.post('/api/publish', async (req, res) => {
   try {
     const { handle, configData } = req.body;
@@ -214,4 +282,4 @@ app.get('/api/admin/all-stores', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log('🚀 Running'));
+app.listen(PORT, () => console.log('🚀 Retail OS Live'));
