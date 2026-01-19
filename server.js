@@ -12,9 +12,10 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// --- DATABASE SYNC ---
+// --- DATABASE SYNC & HEALER ---
 const initDb = async () => {
   try {
+    // Create base tables
     await pool.query(`
       CREATE TABLE IF NOT EXISTS stores (
         id SERIAL PRIMARY KEY,
@@ -35,7 +36,22 @@ const initDb = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    console.log("✅ Database Synced & Fully Operational.");
+
+    // Migration logic: Ensure all columns exist for existing DBs
+    await pool.query(`
+      ALTER TABLE stores ADD COLUMN IF NOT EXISTS owner_whatsapp TEXT;
+      ALTER TABLE stores ADD COLUMN IF NOT EXISTS trial_expires TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '7 days');
+      ALTER TABLE stores ADD COLUMN IF NOT EXISTS plan_type TEXT DEFAULT 'trial';
+    `);
+
+    // THE HEALER: Extract WhatsApp from JSON config and move to main column
+    await pool.query(`
+      UPDATE stores 
+      SET owner_whatsapp = config_data->>'wa' 
+      WHERE owner_whatsapp IS NULL AND config_data->>'wa' IS NOT NULL;
+    `);
+    
+    console.log("✅ Database Synced, Migrated & WhatsApp Numbers Healed.");
   } catch (err) { console.error("❌ DB Sync Error:", err); }
 };
 initDb();
@@ -50,15 +66,15 @@ app.get('/view/:handle', async (req, res) => {
     }
 
     const store = check.rows[0];
-    const isExpired = store.trial_expires && new Date(store.trial_expires) < new Date();
+    const storeData = store.config_data;
     
-    // THE LOGIC: If plan is 'trial' and time is up, BAN. If plan is 'pro', ignore expiry.
+    // Safety check for suspended stores or expired trials (Pro users ignore trial expiry)
+    const isExpired = store.trial_expires && new Date(store.trial_expires) < new Date();
     if (!store.is_active || (store.plan_type === 'trial' && isExpired)) {
         return res.send('<body style="background:#000;color:red;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;text-align:center;"><div><h1>STORE SUSPENDED</h1><p>Contact administrator to renew.</p></div></body>');
     }
 
-    const storeData = store.config_data;
-
+    // Render the page
     res.send(`
     <!DOCTYPE html>
     <html lang="en">
@@ -82,9 +98,9 @@ app.get('/view/:handle', async (req, res) => {
             .banner-overlay { position: absolute; bottom: 0; width: 100%; height: 60%; background: linear-gradient(to top, var(--bg), transparent); }
             
             header { text-align: center; margin-top: -60px; position: relative; z-index: 10; padding: 0 20px; }
-            .logo { width: 120px; height: 120px; object-fit: cover; border-radius: 25px; border: 4px solid var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: var(--card); margin: 0 auto; }
+            .logo { width: 120px; height: 120px; object-fit: cover; border-radius: 25px; border: 4px solid var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: var(--card); margin: 0 auto; display: none; }
             
-            /* CTA BUTTON */
+            /* CTA BUTTON STYLE */
             .cta-btn { 
                 display: inline-block; 
                 background: linear-gradient(180deg, #d4a373, #f1b86b); 
@@ -117,7 +133,6 @@ app.get('/view/:handle', async (req, res) => {
 
             .order-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #111; border-top: 1px solid #333; padding: 20px; box-sizing: border-box; z-index: 1000; display: flex; justify-content: space-between; align-items: center; }
             .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-weight: 800; border: none; cursor: pointer; }
-            .quote-btn { background: #fff; color: #000; border: none; padding: 12px 15px; border-radius: 50px; font-weight: 800; cursor: pointer; margin-right: 10px; }
             
             .loader-wrap { display: flex; justify-content: center; align-items: center; height: 100vh; }
             .loader { border: 4px solid #333; border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
@@ -130,7 +145,7 @@ app.get('/view/:handle', async (req, res) => {
             <div class="banner-container"><img id="store-banner" src=""><div class="banner-overlay"></div></div>
             <div id="content">
                 <header>
-                    <img id="store-logo" class="logo" style="display:none;">
+                    <img id="store-logo" class="logo">
                     <h1 id="store-name" style="margin:15px 0 5px 0;"></h1>
                     <p id="store-tagline" style="color:#888;"></p>
                     <div id="cta-wrap"></div>
@@ -143,10 +158,7 @@ app.get('/view/:handle', async (req, res) => {
                     <span style="color:#888; font-size:0.7rem;">TOTAL</span>
                     <span id="float-total" style="font-weight:900; font-size:1.3rem; color:#00ff00;">--</span>
                 </div>
-                <div style="display:flex;">
-                    <button onclick="printQuote()" class="quote-btn">QUOTE</button>
-                    <button onclick="sendOrder()" class="wa-btn">SEND ORDER</button>
-                </div>
+                <button onclick="sendOrder()" class="wa-btn">SEND ORDER</button>
             </div>
         </div>
 
@@ -159,6 +171,8 @@ app.get('/view/:handle', async (req, res) => {
                 try {
                     const response = await fetch('/api/store/' + handle);
                     storeData = await response.json();
+                    const salesRes = await fetch('/api/sales/' + handle);
+                    const salesData = await salesRes.json();
                     
                     document.getElementById('loader-box').style.display = 'none';
                     document.getElementById('full-store').style.display = 'block';
@@ -166,8 +180,13 @@ app.get('/view/:handle', async (req, res) => {
                     document.getElementById('store-name').innerText = storeData.businessName;
                     document.getElementById('store-tagline').innerText = storeData.tagline || '';
                     
+                    // RENDER CTA BUTTON
                     if(storeData.ctaUrl && storeData.ctaText) {
                         document.getElementById('cta-wrap').innerHTML = '<a href="'+storeData.ctaUrl+'" class="cta-btn">'+storeData.ctaText+'</a>';
+                    }
+
+                    if (salesData.length > 0) {
+                        document.getElementById('analytics-box').innerHTML = '<div class="sales-count">🔥 ' + salesData.length + ' Orders</div>';
                     }
 
                     const logoEl = document.getElementById('store-logo');
@@ -177,13 +196,6 @@ app.get('/view/:handle', async (req, res) => {
                     }
 
                     if(storeData.banner) document.getElementById('store-banner').src = storeData.banner;
-                    
-                    const salesRes = await fetch('/api/sales/' + handle);
-                    const salesData = await salesRes.json();
-                    if (salesData.length > 0) {
-                        document.getElementById('analytics-box').innerHTML = '<div class="sales-count">🔥 ' + salesData.length + ' Orders</div>';
-                    }
-
                     renderMenu();
                 } catch (err) { console.error(err); }
             }
@@ -220,38 +232,26 @@ app.get('/view/:handle', async (req, res) => {
 
             function updateCart(key, price, delta, name) {
                 if (!cart[key]) cart[key] = { qty: 0, price: price, name: name };
-                cart[key].qty = Math.max(0, cart[key].qty + delta);
-                document.getElementById('qty-'+key).innerText = cart[key].qty;
-                
+                cart[key].qty += delta;
+                if (cart[key].qty <= 0) {
+                    delete cart[key];
+                    document.getElementById('qty-'+key).innerText = "0";
+                } else {
+                    document.getElementById('qty-'+key).innerText = cart[key].qty;
+                }
                 let total = 0;
                 Object.values(cart).forEach(i => total += (i.qty * i.price));
                 document.getElementById('float-total').innerText = storeData.curr + ' ' + total;
             }
 
-            function printQuote() {
-                let total = 0;
-                let text = "<h1>QUOTE: " + storeData.businessName + "</h1><hr>";
-                Object.values(cart).forEach(i => {
-                    if(i.qty > 0) {
-                        text += "<p>" + i.qty + "x " + i.name + " - " + storeData.curr + (i.qty * i.price) + "</p>";
-                        total += (i.qty * i.p);
-                    }
-                });
-                if(total === 0) return alert("Select items");
-                const win = window.open('', '_blank');
-                win.document.write(text + "<h2>TOTAL: " + storeData.curr + " " + total + "</h2><button onclick='window.print()'>Print</button>");
-            }
-
             async function sendOrder() {
+                if (Object.keys(cart).length === 0) return alert("Select items first");
                 let total = 0;
                 let text = "*NEW ORDER*\\n\\n";
                 Object.values(cart).forEach(i => {
-                    if(i.qty > 0) {
-                        text += "• " + i.qty + "x " + i.name + "\\n";
-                        total += (i.qty * i.price);
-                    }
+                    text += "• " + i.qty + "x " + i.name + "\\n";
+                    total += (i.qty * i.price);
                 });
-                if(total === 0) return alert("Select items");
                 text += "\\n*TOTAL: " + storeData.curr + " " + total + "*";
                 
                 await fetch('/api/log-sale', {
@@ -272,12 +272,26 @@ app.get('/view/:handle', async (req, res) => {
 
 /* ================== API SECTION ================== */
 
+// Analytics
+app.get('/api/sales/:handle', async (req, res) => {
+  const result = await pool.query('SELECT * FROM sales WHERE store_handle = $1 ORDER BY created_at DESC', [req.params.handle]);
+  res.json(result.rows);
+});
+
+// Logging
+app.post('/api/log-sale', async (req, res) => {
+  const { handle, cart, total } = req.body;
+  await pool.query('INSERT INTO sales (store_handle, order_data, total_amount) VALUES ($1, $2, $3)', [handle, cart, total]);
+  res.json({ success: true });
+});
+
+// Publishing (Accepts isActivated status)
 app.post('/api/publish', async (req, res) => {
   try {
     const { handle, configData, ownerWhatsapp, isActivated } = req.body;
-    // CRITICAL: If isActivated is true, we set plan_type to 'pro' so it never expires.
+    // IF isActivated is true (from builder), set plan to 'pro'. Otherwise 'trial'.
     const plan = isActivated ? 'pro' : 'trial';
-    
+
     await pool.query(`
       INSERT INTO stores (handle, config_data, owner_whatsapp, plan_type) 
       VALUES ($1, $2, $3, $4) 
@@ -290,7 +304,7 @@ app.post('/api/publish', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false }); }
 });
 
-// Load Store Config
+// Load Data
 app.get('/api/store/:handle', async (req, res) => {
   const result = await pool.query('SELECT config_data FROM stores WHERE handle = $1', [req.params.handle]);
   if (result.rows.length > 0) res.json(result.rows[0].config_data);
@@ -299,21 +313,39 @@ app.get('/api/store/:handle', async (req, res) => {
 
 // Admin Dashboard List
 app.get('/api/admin/all-stores', async (req, res) => {
-  const r = await pool.query('SELECT handle, owner_whatsapp, is_active, trial_expires, plan_type, created_at, config_data->>\'businessName\' as name FROM stores ORDER BY created_at DESC');
-  res.json(r.rows);
+  try {
+    const r = await pool.query(`
+      SELECT 
+        handle, 
+        owner_whatsapp,
+        is_active, 
+        trial_expires,
+        plan_type,
+        created_at, 
+        config_data->>'businessName' as name 
+      FROM stores 
+      ORDER BY created_at DESC
+    `);
+    res.json(r.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// Log and Analytics
-app.get('/api/sales/:handle', async (req, res) => {
-  const result = await pool.query('SELECT * FROM sales WHERE store_handle = $1', [req.params.handle]);
-  res.json(result.rows);
-});
-
-app.post('/api/log-sale', async (req, res) => {
-  const { handle, cart, total } = req.body;
-  await pool.query('INSERT INTO sales (store_handle, order_data, total_amount) VALUES ($1, $2, $3)', [handle, cart, total]);
-  res.json({ success: true });
+// Admin Actions
+app.post('/api/admin/action', async (req, res) => {
+  const { handle, action } = req.body;
+  try {
+    if (action === 'toggle') {
+      await pool.query('UPDATE stores SET is_active = NOT is_active WHERE handle = $1', [handle]);
+    } else if (action === 'extend') {
+      await pool.query("UPDATE stores SET trial_expires = trial_expires + INTERVAL '30 days' WHERE handle = $1", [handle]);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log('🚀 Engine Live with Pro Logic'));
+app.listen(PORT, () => console.log('🚀 Engine Live'));
