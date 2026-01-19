@@ -12,6 +12,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// --- DATABASE SYNC ---
 const initDb = async () => {
   try {
     await pool.query(`
@@ -26,24 +27,34 @@ const initDb = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+      CREATE TABLE IF NOT EXISTS sales (
+        id SERIAL PRIMARY KEY,
+        store_handle TEXT,
+        order_data JSONB,
+        total_amount NUMERIC,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
     `);
-    console.log("✅ Database Ready.");
+    console.log("✅ Database Synced & Fully Operational.");
   } catch (err) { console.error("❌ DB Sync Error:", err); }
 };
 initDb();
 
-/* ================== THE VIEWER (Restored & Updated) ================== */
+/* ================== THE VIEWER (The Storefront) ================== */
 app.get('/view/:handle', async (req, res) => {
   try {
     const check = await pool.query('SELECT is_active, trial_expires, config_data, plan_type FROM stores WHERE handle = $1', [req.params.handle]);
-    if (check.rows.length === 0) return res.status(404).send('Store Not Found');
+    
+    if (check.rows.length === 0) {
+        return res.status(404).send('<body style="background:#000;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;"><h1>Store Not Found</h1></body>');
+    }
 
     const store = check.rows[0];
     const isExpired = store.trial_expires && new Date(store.trial_expires) < new Date();
     
-    // Logic: If trial AND expired, suspend. If 'pro', it ignores expiry.
+    // THE LOGIC: If plan is 'trial' and time is up, BAN. If plan is 'pro', ignore expiry.
     if (!store.is_active || (store.plan_type === 'trial' && isExpired)) {
-        return res.send('<body style="background:#000;color:red;display:flex;justify-content:center;align-items:center;height:100vh;text-align:center;font-family:sans-serif;"><div><h1>STORE SUSPENDED</h1><p>Contact administrator to renew.</p></div></body>');
+        return res.send('<body style="background:#000;color:red;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;text-align:center;"><div><h1>STORE SUSPENDED</h1><p>Contact administrator to renew.</p></div></body>');
     }
 
     const storeData = store.config_data;
@@ -54,116 +65,255 @@ app.get('/view/:handle', async (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>\${storeData.businessName}</title>
+        <title>\${storeData.businessName || 'Retail OS'}</title>
         <style>
             :root { --accent: #00d4ff; --bg: #0f0f0f; --card: #1a1a1a; --text: #ffffff; }
-            body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; padding-bottom: 120px; overflow-x: hidden; }
+            body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; line-height: 1.4; padding-bottom: 120px; overflow-x: hidden; }
+            
             .banner-container { width: 100%; height: 55vh; background: #000; position: relative; overflow: hidden; }
-            #store-banner { width: 100.2%; height: 100%; object-fit: cover; margin-left: -0.1%; }
+            #store-banner { 
+                width: 100.2%; 
+                height: 100%; 
+                object-fit: cover; 
+                object-position: center;
+                display: block;
+                margin-left: -0.1%;
+            }
             .banner-overlay { position: absolute; bottom: 0; width: 100%; height: 60%; background: linear-gradient(to top, var(--bg), transparent); }
+            
             header { text-align: center; margin-top: -60px; position: relative; z-index: 10; padding: 0 20px; }
-            .logo { width: 120px; height: 120px; object-fit: cover; border-radius: 25px; border: 4px solid var(--bg); background: var(--card); margin: 0 auto; display: none; }
-            .cta-btn { display: inline-block; background: linear-gradient(180deg, #d4a373, #f1b86b); color: #000; padding: 12px 25px; border-radius: 50px; text-decoration: none; font-weight: bold; margin-top: 15px; text-transform: uppercase; font-size: 0.9rem; }
+            .logo { width: 120px; height: 120px; object-fit: cover; border-radius: 25px; border: 4px solid var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: var(--card); margin: 0 auto; }
+            
+            /* CTA BUTTON */
+            .cta-btn { 
+                display: inline-block; 
+                background: linear-gradient(180deg, #d4a373, #f1b86b); 
+                color: #000; 
+                padding: 12px 30px; 
+                border-radius: 50px; 
+                text-decoration: none; 
+                font-weight: 800; 
+                margin-top: 15px; 
+                text-transform: uppercase; 
+                font-size: 0.85rem;
+                box-shadow: 0 4px 15px rgba(212, 163, 115, 0.4);
+            }
+
+            .sales-count { background: rgba(0, 212, 255, 0.1); border: 1px solid var(--accent); color: var(--accent); padding: 5px 15px; border-radius: 50px; font-size: 0.8rem; font-weight: bold; margin-top: 15px; display: inline-block; }
+
             #content { display: none; max-width: 600px; margin: 0 auto; }
-            .section-title { color: var(--accent); font-size: 1.4rem; margin: 40px 20px 15px; font-weight: 800; text-transform: uppercase; }
-            .item-card { background: var(--card); margin: 0 20px 25px; border-radius: 24px; overflow: hidden; border: 1px solid #252525; }
-            .item-img { width: 100%; height: auto; max-height: 350px; object-fit: cover; }
+            .section-title { color: var(--accent); font-size: 1.4rem; margin: 40px 20px 15px 20px; font-weight: 800; text-transform: uppercase; }
+            .item-card { background: var(--card); margin: 0 20px 25px 20px; border-radius: 24px; overflow: hidden; border: 1px solid #252525; }
+            .item-img { width: 100%; height: auto; max-height: 350px; object-fit: cover; display: block; }
             .item-body { padding: 20px; }
             .item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-            .item-price { color: #00ff00; font-weight: 900; font-size: 1.2rem; }
+            .item-name { font-weight: 800; font-size: 1.2rem; flex: 1; }
+            .item-price { color: #00ff00; font-weight: 900; font-size: 1.2rem; margin-left: 10px; }
+            .item-desc { color: #aaa; font-size: 0.95rem; margin-bottom: 20px; white-space: pre-wrap; }
+
             .qty-controls { display: flex; align-items: center; background: #222; border-radius: 50px; width: fit-content; padding: 5px 15px; }
             .qty-btn { background: none; border: none; color: var(--accent); font-size: 1.5rem; font-weight: bold; cursor: pointer; padding: 0 10px; }
+            .qty-val { font-weight: bold; min-width: 30px; text-align: center; font-size: 1.1rem; color: #fff; }
+
             .order-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: #111; border-top: 1px solid #333; padding: 20px; box-sizing: border-box; z-index: 1000; display: flex; justify-content: space-between; align-items: center; }
-            .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-weight: 800; }
+            .wa-btn { background: #25d366; color: white; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-weight: 800; border: none; cursor: pointer; }
+            .quote-btn { background: #fff; color: #000; border: none; padding: 12px 15px; border-radius: 50px; font-weight: 800; cursor: pointer; margin-right: 10px; }
+            
+            .loader-wrap { display: flex; justify-content: center; align-items: center; height: 100vh; }
+            .loader { border: 4px solid #333; border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         </style>
     </head>
     <body>
-        <div id="full-store">
-            <div class="banner-container"><img id="store-banner" src="\${storeData.banner || ''}"><div class="banner-overlay"></div></div>
+        <div id="loader-box" class="loader-wrap"><div class="loader"></div></div>
+        <div id="full-store" style="display:none;">
+            <div class="banner-container"><img id="store-banner" src=""><div class="banner-overlay"></div></div>
             <div id="content">
                 <header>
-                    <img id="store-logo" class="logo" src="\${storeData.logo || ''}" style="\${storeData.logo ? 'display:block' : 'display:none'}">
-                    <h1>\${storeData.businessName}</h1>
-                    <p style="color:#888;">\${storeData.tagline || ''}</p>
-                    \${(storeData.ctaUrl && storeData.ctaText) ? \`<a href="\${storeData.ctaUrl}" class="cta-btn">\${storeData.ctaText}</a>\` : ''}
+                    <img id="store-logo" class="logo" style="display:none;">
+                    <h1 id="store-name" style="margin:15px 0 5px 0;"></h1>
+                    <p id="store-tagline" style="color:#888;"></p>
+                    <div id="cta-wrap"></div>
+                    <div id="analytics-box"></div>
                 </header>
                 <div id="menu-container"></div>
             </div>
             <div class="order-bar">
-                <div><span style="color:#888; font-size:0.7rem;">TOTAL</span><br><span id="float-total" style="font-weight:900; font-size:1.3rem; color:#00ff00;">\${storeData.curr} 0</span></div>
-                <button onclick="sendOrder()" class="wa-btn">SEND ORDER</button>
+                <div style="display:flex; flex-direction:column;">
+                    <span style="color:#888; font-size:0.7rem;">TOTAL</span>
+                    <span id="float-total" style="font-weight:900; font-size:1.3rem; color:#00ff00;">--</span>
+                </div>
+                <div style="display:flex;">
+                    <button onclick="printQuote()" class="quote-btn">QUOTE</button>
+                    <button onclick="sendOrder()" class="wa-btn">SEND ORDER</button>
+                </div>
             </div>
         </div>
+
         <script>
+            const handle = window.location.pathname.split('/').pop();
             let cart = {};
-            const storeData = \${JSON.stringify(storeData)};
-            document.getElementById('content').style.display = 'block';
+            let storeData = null;
+
+            async function bootStore() {
+                try {
+                    const response = await fetch('/api/store/' + handle);
+                    storeData = await response.json();
+                    
+                    document.getElementById('loader-box').style.display = 'none';
+                    document.getElementById('full-store').style.display = 'block';
+                    document.getElementById('content').style.display = 'block';
+                    document.getElementById('store-name').innerText = storeData.businessName;
+                    document.getElementById('store-tagline').innerText = storeData.tagline || '';
+                    
+                    if(storeData.ctaUrl && storeData.ctaText) {
+                        document.getElementById('cta-wrap').innerHTML = '<a href="'+storeData.ctaUrl+'" class="cta-btn">'+storeData.ctaText+'</a>';
+                    }
+
+                    const logoEl = document.getElementById('store-logo');
+                    if(storeData.logo && storeData.logo.trim() !== "") {
+                        logoEl.src = storeData.logo;
+                        logoEl.style.display = "block";
+                    }
+
+                    if(storeData.banner) document.getElementById('store-banner').src = storeData.banner;
+                    
+                    const salesRes = await fetch('/api/sales/' + handle);
+                    const salesData = await salesRes.json();
+                    if (salesData.length > 0) {
+                        document.getElementById('analytics-box').innerHTML = '<div class="sales-count">🔥 ' + salesData.length + ' Orders</div>';
+                    }
+
+                    renderMenu();
+                } catch (err) { console.error(err); }
+            }
 
             function renderMenu() {
                 const container = document.getElementById('menu-container');
-                storeData.menu.forEach((sec, sIdx) => {
-                    const h = document.createElement('h2'); h.className='section-title'; h.innerText=sec.title; container.appendChild(h);
-                    sec.items.forEach((it, iIdx) => {
-                        const key = sIdx+'-'+iIdx;
-                        const div = document.createElement('div'); div.className='item-card';
-                        div.innerHTML = \`\${it.img ? '<img src="'+it.img+'" class="item-img">' : ''}
+                container.innerHTML = "";
+                storeData.menu.forEach((section, sIdx) => {
+                    const secNode = document.createElement('div');
+                    secNode.innerHTML = '<h2 class="section-title">' + section.title + '</h2>';
+                    section.items.forEach((item, iIdx) => {
+                        const key = sIdx + '-' + iIdx;
+                        const card = document.createElement('div');
+                        card.className = 'item-card';
+                        card.innerHTML = \`
+                            \${(item.image || item.img) ? '<img src="'+(item.image || item.img)+'" class="item-img">' : ''}
                             <div class="item-body">
-                                <div class="item-header"><b>\${it.name}</b><span class="item-price">\${storeData.curr} \${it.price}</span></div>
+                                <div class="item-header">
+                                    <span class="item-name">\${item.name}</span>
+                                    <span class="item-price">\${storeData.curr} \${item.price}</span>
+                                </div>
+                                <div class="item-desc">\${item.desc || ''}</div>
                                 <div class="qty-controls">
-                                    <button class="qty-btn" onclick="updateCart('\${key}',\${it.price},-1,'\${it.name}')">−</button>
-                                    <span id="qty-\${key}">0</span>
-                                    <button class="qty-btn" onclick="updateCart('\${key}',\${it.price},1,'\${it.name}')">+</button>
+                                    <button class="qty-btn" onclick="updateCart('\${key}', \${item.price}, -1, '\${item.name}')">−</button>
+                                    <span class="qty-val" id="qty-\${key}">0</span>
+                                    <button class="qty-btn" onclick="updateCart('\${key}', \${item.price}, 1, '\${item.name}')">+</button>
                                 </div>
                             </div>\`;
-                        container.appendChild(div);
+                        secNode.appendChild(card);
                     });
+                    container.appendChild(secNode);
                 });
             }
-            function updateCart(k,p,d,n){
-                if(!cart[k]) cart[k]={qty:0,p:p,n:n}; cart[k].qty=Math.max(0,cart[k].qty+d);
-                document.getElementById('qty-'+k).innerText=cart[k].qty;
-                let t=0; Object.values(cart).forEach(i=>t+=(i.qty*i.p));
-                document.getElementById('float-total').innerText=storeData.curr+' '+t;
+
+            function updateCart(key, price, delta, name) {
+                if (!cart[key]) cart[key] = { qty: 0, price: price, name: name };
+                cart[key].qty = Math.max(0, cart[key].qty + delta);
+                document.getElementById('qty-'+key).innerText = cart[key].qty;
+                
+                let total = 0;
+                Object.values(cart).forEach(i => total += (i.qty * i.price));
+                document.getElementById('float-total').innerText = storeData.curr + ' ' + total;
             }
-            function sendOrder(){
-                let t=0, txt="*NEW ORDER*\\n\\n"; 
-                Object.values(cart).forEach(i=>{ if(i.qty>0){ txt+="• "+i.qty+"x "+i.n+"\\n"; t+=(i.qty*i.p); } });
-                if(t===0) return alert("Empty cart");
-                window.location.href="https://wa.me/"+storeData.wa+"?text="+encodeURIComponent(txt+"\\n*TOTAL: "+storeData.curr+" "+t+"*");
+
+            function printQuote() {
+                let total = 0;
+                let text = "<h1>QUOTE: " + storeData.businessName + "</h1><hr>";
+                Object.values(cart).forEach(i => {
+                    if(i.qty > 0) {
+                        text += "<p>" + i.qty + "x " + i.name + " - " + storeData.curr + (i.qty * i.price) + "</p>";
+                        total += (i.qty * i.p);
+                    }
+                });
+                if(total === 0) return alert("Select items");
+                const win = window.open('', '_blank');
+                win.document.write(text + "<h2>TOTAL: " + storeData.curr + " " + total + "</h2><button onclick='window.print()'>Print</button>");
             }
-            renderMenu();
+
+            async function sendOrder() {
+                let total = 0;
+                let text = "*NEW ORDER*\\n\\n";
+                Object.values(cart).forEach(i => {
+                    if(i.qty > 0) {
+                        text += "• " + i.qty + "x " + i.name + "\\n";
+                        total += (i.qty * i.price);
+                    }
+                });
+                if(total === 0) return alert("Select items");
+                text += "\\n*TOTAL: " + storeData.curr + " " + total + "*";
+                
+                await fetch('/api/log-sale', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ handle, cart, total })
+                });
+                
+                window.location.href = "https://wa.me/" + storeData.wa + "?text=" + encodeURIComponent(text);
+            }
+            bootStore();
         </script>
     </body>
-    </html>`);
-  } catch (err) { res.status(500).send("Error"); }
+    </html>
+  `);
+  } catch (err) { res.status(500).send("Critical View Error"); }
 });
 
 /* ================== API SECTION ================== */
+
 app.post('/api/publish', async (req, res) => {
   try {
-    const { handle, configData, isActivated } = req.body;
-    // Set plan_type to 'pro' ONLY IF isActivated is true
+    const { handle, configData, ownerWhatsapp, isActivated } = req.body;
+    // CRITICAL: If isActivated is true, we set plan_type to 'pro' so it never expires.
     const plan = isActivated ? 'pro' : 'trial';
-    const wa = configData.wa || '';
     
     await pool.query(`
       INSERT INTO stores (handle, config_data, owner_whatsapp, plan_type) 
       VALUES ($1, $2, $3, $4) 
-      ON CONFLICT (handle) DO UPDATE SET config_data = $2, owner_whatsapp = $3, plan_type = $4`, 
-    [handle, configData, wa, plan]);
+      ON CONFLICT (handle) DO UPDATE SET 
+        config_data = $2, 
+        owner_whatsapp = EXCLUDED.owner_whatsapp,
+        plan_type = EXCLUDED.plan_type`, 
+    [handle, configData, ownerWhatsapp, plan]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false }); }
 });
 
+// Load Store Config
+app.get('/api/store/:handle', async (req, res) => {
+  const result = await pool.query('SELECT config_data FROM stores WHERE handle = $1', [req.params.handle]);
+  if (result.rows.length > 0) res.json(result.rows[0].config_data);
+  else res.status(404).json({ error: "Store not found" });
+});
+
+// Admin Dashboard List
 app.get('/api/admin/all-stores', async (req, res) => {
   const r = await pool.query('SELECT handle, owner_whatsapp, is_active, trial_expires, plan_type, created_at, config_data->>\'businessName\' as name FROM stores ORDER BY created_at DESC');
   res.json(r.rows);
 });
 
-app.get('/api/store/:handle', async (req, res) => {
-  const r = await pool.query('SELECT config_data FROM stores WHERE handle = $1', [req.params.handle]);
-  res.json(r.rows[0].config_data);
+// Log and Analytics
+app.get('/api/sales/:handle', async (req, res) => {
+  const result = await pool.query('SELECT * FROM sales WHERE store_handle = $1', [req.params.handle]);
+  res.json(result.rows);
+});
+
+app.post('/api/log-sale', async (req, res) => {
+  const { handle, cart, total } = req.body;
+  await pool.query('INSERT INTO sales (store_handle, order_data, total_amount) VALUES ($1, $2, $3)', [handle, cart, total]);
+  res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log('🚀 Engine Live'));
+app.listen(PORT, () => console.log('🚀 Engine Live with Pro Logic'));
