@@ -306,7 +306,11 @@ app.post('/api/log-sale', async (req, res) => {
 app.post('/api/publish', async (req, res) => {
   try {
     const { handle, configData, ownerWhatsapp, isActivated } = req.body;
-    const client_ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    
+    // Look for the Real IP provided by Render's proxy, or fallback to remoteAddress
+    const forwarded = req.headers['x-forwarded-for'];
+    const client_ip = forwarded ? forwarded.split(',')[0] : req.socket.remoteAddress;
+    
     const plan = isActivated ? 'pro' : 'trial';
 
     await pool.query(`
@@ -318,8 +322,12 @@ app.post('/api/publish', async (req, res) => {
         plan_type = EXCLUDED.plan_type,
         client_ip = EXCLUDED.client_ip`, 
     [handle, configData, ownerWhatsapp, plan, client_ip]);
+    
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ success: false }); }
+  } catch (err) { 
+    console.error("Publish Error:", err);
+    res.status(500).json({ success: false }); 
+  }
 });
 
 app.get('/api/store/:handle', async (req, res) => {
