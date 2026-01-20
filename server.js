@@ -303,6 +303,22 @@ app.post('/api/log-sale', async (req, res) => {
   res.json({ success: true });
 });
 
+app.delete('/api/sales/delete/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM sales WHERE id = $1', [id]);
+    
+    if (result.rowCount > 0) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "Order not found" });
+    }
+  } catch (err) {
+    console.error("Delete Error:", err);
+    res.status(500).json({ error: "Server error during deletion" });
+  }
+});
+
 app.post('/api/publish', async (req, res) => {
   try {
     const { handle, configData, ownerWhatsapp, isActivated } = req.body;
