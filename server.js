@@ -83,28 +83,18 @@ app.get('/view/:handle', async (req, res) => {
     res.send(`
     <!DOCTYPE html>
     <html lang="en">
-        <head>
+            <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        
         <title>${businessName}</title>
-        <meta name="description" content="${tagline}">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         
-        <meta property="og:type" content="website">
-        <meta property="og:url" content="https://webstore-api-m8sr.onrender.com/view/${req.params.handle}">
         <meta property="og:title" content="${businessName}">
         <meta property="og:description" content="${tagline}">
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="https://webstore-api-m8sr.onrender.com/view/${req.params.handle}">
         <meta property="og:image" content="${stampImage}">
-        <meta property="og:image:secure_url" content="${stampImage}">
-        <meta property="og:image:type" content="image/gif">
-        
-        <meta itemprop="name" content="${businessName}">
-        <meta itemprop="description" content="${tagline}">
-        <meta itemprop="image" content="${stampImage}">
 
         <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:title" content="${businessName}">
-        <meta name="twitter:description" content="${tagline}">
         <meta name="twitter:image" content="${stampImage}">
 
         <style>
