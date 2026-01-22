@@ -82,15 +82,15 @@ app.get('/view/:handle', async (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
-        <title>\${businessName}</title>
-        <meta property="og:title" content="\${businessName}">
-        <meta property="og:description" content="\${tagline}">
-        <meta property="og:image" content="\${stampImage}">
+        <title>${businessName}</title>
+        <meta property="og:title" content="${businessName}">
+        <meta property="og:description" content="${tagline}">
+        <meta property="og:image" content="${stampImage}">
         <meta property="og:type" content="website">
 
         <style>
             :root { --accent: #00d4ff; --bg: #0f0f0f; --card: #1a1a1a; --text: #ffffff; --gold: #d4a373; --gold-stars: #ffcc00; }
-            body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; line-height: 1.4; padding-bottom: 120px; overflow-x: hidden; }
+            body { background: var(--bg); color: var(--text); margin: 0; font-family: -apple-system, sans-serif; line-height: 1.4; padding-bottom: 120px; overflow-x: hidden; font-size: 16px; }
             
             .banner-container { width: 100%; height: 55vh; background: #000; position: relative; overflow: hidden; }
             #store-banner { width: 100.2%; height: 100%; object-fit: cover; object-position: center; display: block; margin-left: -0.1%; }
@@ -105,14 +105,12 @@ app.get('/view/:handle', async (req, res) => {
                 font-size: 0.85rem; box-shadow: 0 4px 15px rgba(212, 163, 115, 0.4);
             }
 
-            /* BADGES & SCARCITY */
             .badge { position: absolute; top: 15px; left: 15px; padding: 5px 12px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; z-index: 4; text-transform: uppercase; letter-spacing: 1px; }
             .badge-scarcity { background: #ff0000; color: #fff; animation: pulse-red 1.5s infinite; }
             .badge-hot { background: var(--gold); color: #000; }
             .badge-new { background: #3498db; color: #fff; }
             @keyframes pulse-red { 0% { transform: scale(1); } 70% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-            /* SOCIAL SHARE */
             .share-btn {
                 position: absolute; top: 15px; right: 15px; background: rgba(0,0,0,0.6); border: 1px solid var(--accent); 
                 color: var(--accent); border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; 
@@ -130,7 +128,6 @@ app.get('/view/:handle', async (req, res) => {
             .hidden-btn { visibility: hidden; pointer-events: none; }
             .wa-service-btn { width: 100%; margin-top: 15px; cursor: pointer; transition: 0.2s; border-radius: 10px; }
 
-            /* WATERMARK */
             .watermark { text-align: center; padding: 30px 0; opacity: 0.5; font-size: 0.75rem; letter-spacing: 2px; }
             .watermark img { height: 20px; vertical-align: middle; margin-right: 5px; filter: grayscale(1); }
 
@@ -145,21 +142,19 @@ app.get('/view/:handle', async (req, res) => {
         <div id="loader-box" class="loader-wrap"><div class="loader"></div></div>
         <div id="full-store" style="display:none;">
             <div class="banner-container"><img id="store-banner" src=""><div class="banner-overlay"></div></div>
-            <div id="content">
+            <div id="content" style="display:none; max-width:600px; margin:0 auto;">
                 <header>
                     <img id="store-logo" class="logo">
-                    <h1 id="store-name" style="margin:15px 0 5px 0;"></h1>
-                    <p id="store-tagline" style="color:#888;"></p>
+                    <h1 id="store-name" style="margin:15px 0 5px 0; font-size:1.8rem;"></h1>
+                    <p id="store-tagline" style="color:#888; font-size:1rem;"></p>
                     <div id="analytics-box"></div>
                 </header>
                 <div id="menu-container"></div>
                 <div id="cta-wrap" style="text-align:center; padding-bottom:10px;"></div>
-                
                 <div class="watermark">
                     <img src="https://i.imgur.com/8WwR2sL.png" alt="TiffyAI"> POWERED BY TIFFYAI
                 </div>
             </div>
-            
             <div class="order-bar" id="bottom-order-bar">
                 <div style="display:flex; flex-direction:column;">
                     <span style="color:#888; font-size:0.7rem;">TOTAL</span>
